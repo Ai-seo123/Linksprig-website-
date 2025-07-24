@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+
+{% block title %}Keyword Search - LinkedIn Automation{% endblock %}
+
+{% block content %}
+<div class="page-container">
+    <div class="page-header">
+        <h1><i class="fas fa-search"></i> LinkedIn Profile Search</h1>
+        <p>Search for LinkedIn profiles and optionally send connection requests</p>
+    </div>
+
+    <div class="search-container">
+        <div class="search-section">
+            <h3><i class="fas fa-filter"></i> Search Parameters</h3>
+            <form method="POST" class="search-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="keywords">Keywords *</label>
+                        <input type="text" id="keywords" name="keywords" required 
+                               placeholder="e.g., software engineer, marketing manager"
+                               value="{{ search_info.keywords if search_info else '' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="location">Location</label>
+                        <input type="text" id="location" name="location" 
+                               placeholder="e.g., San Francisco, CA"
+                               value="{{ search_info.location if search_info else '' }}">
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="search_type">Search Type</label>
+                        <select id="search_type" name="search_type">
+                            <option value="search_only" {% if search_info and search_info.search_type == 'search_only' %}selected{% endif %}>
+                                Search Only (View Results)
+                            </option>
+                            <option value="search_and_connect" {% if search_info and search_info.search_type == 'search_and_connect' %}selected{% endif %}>
+                                Search and Connect (Auto-send invites)
+                            </option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="max_results">Max Results</label>
+                        <input type="number" id="max_results" name="max_results" 
+                               value="{{ search_info.max_results if search_info else 10 }}" 
+                               min="1" max="50">
+                    </div>
+                </div>
+
+                <button type="submit" class="search-btn">
+                    <i class="fas fa-search"></i>
+                    Start Search
+                </button>
+            </form>
+        </div>
+
+        {% if search_results %}
+        <div class="results-section">
+            {% if search_results.error %}
+            <div class="error-message">
+                <i class="fas fa-exclamation-triangle"></i>
+                Error: {{ search_results.error }}
+            </div>
+            {% elif search_results.type == 'search_only' %}
+            <h3><i class="fas fa-users"></i> Search Results</h3>
+            <div class="search-info">
+                <p><strong>Keywords:</strong> {{ search_info.keywords }}</p>
+                {% if search_info.location %}
+                <p><strong>Location:</strong> {{ search_info.location }}</p>
+                {% endif %}
+                <p><strong>Results Found:</strong> {{ search_results.results|length }}</p>
+            </div>
+            
+            <div class="results-grid">
+                {% for profile in search_results.results %}
+                <div class="profile-card">
+                    <div class="profile-info">
+                        <h4>{{ profile.name }}</h4>
+                        <p class="profile-headline">{{ profile.headline }}</p>
+                        <p class="profile-location">{{ profile.location }}</p>
+                    </div>
+                    <div class="profile-actions">
+                        <a href="{{ profile.profile_url }}" target="_blank" class="view-profile-btn">
+                            <i class="fab fa-linkedin"></i>
+                            View Profile
+                        </a>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            
+            {% elif search_results.type == 'search_and_connect' %}
+            <h3><i class="fas fa-handshake"></i> Connection Results</h3>
+            <div class="connection-summary">
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-number">{{ search_results.results.sent_count }}</span>
+                        <span class="stat-label">Connections Sent</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">{{ search_results.results.max_invites }}</span>
+                        <span class="stat-label">Max Invites</span>
+                    </div>
+                </div>
+            </div>
+            
+            {% if search_results.results.connections_sent %}
+            <div class="connections-sent">
+                <h4>Connections Sent</h4>
+                <div class="connections-list">
+                    {% for connection in search_results.results.connections_sent %}
+                    <div class="connection-item">
+                        <i class="fas fa-user-plus"></i>
+                        <span class="connection-name">{{ connection.name }}</span>
+                        <span class="connection-time">{{ connection.timestamp }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+// Auto-refresh results every 5 seconds if search is in progress
+{% if search_info and not search_results %}
+setTimeout(function() {
+    location.reload();
+}, 5000);
+{% endif %}
+</script>
+{% endblock %}

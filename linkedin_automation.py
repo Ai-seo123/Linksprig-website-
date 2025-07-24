@@ -1,0 +1,1253 @@
+import csv
+import os
+import time
+import random
+import google.generativeai as genai
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import (
+    TimeoutException,
+    NoSuchElementException,
+    ElementClickInterceptedException,
+    ElementNotInteractableException
+)
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.action_chains import ActionChains
+import logging
+from urllib.parse import urlparse, quote_plus
+import re
+import sys
+import json
+import pandas as pd
+from datetime import datetime
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+import psutil
+import tempfile
+import platform
+import shutil
+import atexit
+import uuid
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('linkedin_automation.log', encoding='utf-8'),
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+logger = logging.getLogger(__name__)
+
+
+def _chromedriver_major_version() -> int:
+        """Return driver’s major build (e.g., 74, 75, 118 …)."""
+        from selenium.webdriver.chrome.service import Service
+        try:
+            srv = Service()                    # uses chromedriver on PATH
+            # --version prints:  "ChromeDriver 74.0.3729.6 …"
+            out = os.popen(f'"{srv.path}" --version').read()
+            match = re.search(r'ChromeDriver (\d+)\.', out)
+            return int(match.group(1)) if match else 0
+        except Exception:
+            return 0
+
+def open_linkedin_tab(self):
+    try:
+        self.driver.execute_script("window.open('https://www.linkedin.com/feed','_blank');")
+        self.driver.switch_to.window(self.driver.window_handles[-1])
+        self.wait.until(lambda d: "https://www.linkedin.com" in d.current_url)
+        time.sleep(3)
+    except Exception as e:
+        logger.warning(f"⚠️ Failed to open LinkedIn tab: {e}")
+
+def _open_tab_and_wait(driver, url: str, title_contains: str = "", timeout: int = 15):
+    """
+    Opens `url` in a new tab, switches to it, and optionally waits
+    until `title_contains` text appears in the document.title.
+    """
+    driver.execute_script(f"window.open('{url}', '_blank');")
+    driver.switch_to.window(driver.window_handles[-1])
+    if title_contains:
+        WebDriverWait(driver, timeout).until(
+            lambda d: title_contains.lower() in d.title.lower()
+        )
+
+class LinkedInAutomation:
+    def __init__(self, email, password, api_key):
+        self.email = email
+        self.password = password
+        self.api_key = api_key
+        self.driver = None
+        self.wait = None
+        self.model = None
+        self.tracked_profiles_file = 'messaged_profiles.json'
+        self.tracked_profiles = set()
+        self.persistent_profile_dir = None
+        
+        self.setup_driver()
+        self.setup_ai()
+        self.load_tracked_profiles()
+        
+        # Try to restore existing session
+        self._load_session_cookies()
+
+    def setup_driver(self):
+        """Initialize Chrome with persistent session management"""
+        try:
+            if self.driver:
+                try:
+                    self.driver.quit()
+                except Exception:
+                    pass
+            
+            # Create persistent profile directory
+            self.persistent_profile_dir = os.path.join(
+                os.path.expanduser("~"), 
+                ".linkedin_automation_profile"
+            )
+            os.makedirs(self.persistent_profile_dir, exist_ok=True)
+            
+            options = webdriver.ChromeOptions()
+            options.add_argument(f"--user-data-dir={self.persistent_profile_dir}")
+            options.add_argument("--profile-directory=LinkedIn")
+            options.add_argument("--start-maximized")
+            options.add_argument("--disable-blink-features=AutomationControlled")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--disable-web-security")
+            options.add_argument("--allow-running-insecure-content")
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option('useAutomationExtension', False)
+            
+            # Disable notifications and popups
+            prefs = {
+                "profile.default_content_setting_values": {
+                    "notifications": 2,
+                },
+                "profile.managed_default_content_settings": {
+                    "images": 2
+                }
+            }
+            options.add_experimental_option("prefs", prefs)
+            
+            self.driver = webdriver.Chrome(options=options)
+            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            self.wait = WebDriverWait(self.driver, 10)
+            
+            logger.info("✅ Chrome initialized with persistent profile")
+            
+        except Exception as e:
+            logger.error(f"❌ Driver setup failed: {e}")
+            raise
+
+
+    def _cleanup_profile(self):
+        """Clean up temporary profile directory"""
+        if self.temp_profile_dir and os.path.exists(self.temp_profile_dir):
+            try:
+                shutil.rmtree(self.temp_profile_dir, ignore_errors=True)
+            except Exception:
+                pass
+    
+    def open_new_tab(self, url):
+        """
+        Opens a new tab in the same Chrome window and navigates to the provided URL.
+        """
+        # Open a new tab with the target URL
+        self.driver.execute_script(f"window.open('{url}', '_blank');")
+        # Switch to the newest tab
+        self.driver.switch_to.window(self.driver.window_handles[-1])
+
+    def login(self):
+        """Enhanced login with session validation and persistence"""
+        try:
+            logger.info("🔐 Checking LinkedIn session...")
+            
+            # First, navigate to LinkedIn feed to check existing session
+            self.driver.get("https://www.linkedin.com/feed")
+            time.sleep(3)
+            
+            # Check if already logged in
+            if self._is_logged_in():
+                logger.info("✅ Already logged in! Session restored successfully")
+                self._save_session_cookies()
+                return True
+            
+            logger.info("🔄 No active session found, attempting login...")
+            
+            # Navigate to login page
+            self.driver.get("https://www.linkedin.com/login")
+            self.wait.until(EC.presence_of_element_located((By.ID, "username")))
+            self.human_delay(1.5, 3)
+
+            # Type email
+            username_field = self.driver.find_element(By.ID, "username")
+            logger.info("✏️ Typing email...")
+            self.type_like_human(username_field, self.email)
+            self.human_delay(1, 2)
+
+            # Type password
+            try:
+                password_field = self.driver.find_element(By.ID, "password")
+            except NoSuchElementException:
+                logger.error("❌ Password field not found on login page.")
+                return False
+
+            if not self.password:
+                logger.error("❌ LinkedIn password is empty or None. Cannot log in.")
+                return False
+
+            logger.info("✏️ Typing password...")
+            self.type_like_human(password_field, self.password)
+            
+            # Click Login
+            login_button = self.driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+            self.safe_click(login_button)
+
+            # Wait for login success
+            try:
+                self.wait.until(lambda d: self._is_logged_in(), timeout=30)
+                logger.info("✅ LinkedIn login successful!")
+                
+                # Save session for future use
+                self._save_session_cookies()
+                self._mark_session_active()
+                
+                self.human_delay(2, 4)
+                return True
+
+            except TimeoutException:
+                if "checkpoint" in self.driver.current_url or "challenge" in self.driver.current_url:
+                    logger.warning("⚠️ 2FA/Challenge page detected. Please complete manually.")
+                    
+                    # Wait for user to complete 2FA
+                    logger.info("⏳ Waiting for manual 2FA completion...")
+                    for i in range(120):  # Wait up to 2 minutes
+                        time.sleep(1)
+                        if self._is_logged_in():
+                            logger.info("✅ 2FA completed successfully!")
+                            self._save_session_cookies()
+                            self._mark_session_active()
+                            return True
+                            
+                    logger.error("❌ 2FA timeout - please try again")
+                    return False
+                    
+                logger.error("❌ Login failed or timed out.")
+                return False
+
+        except Exception as e:
+            logger.error(f"❌ Login exception: {e}")
+            return False
+
+    def _save_session_cookies(self):
+        """Save current session cookies"""
+        try:
+            if "linkedin.com" in self.driver.current_url:
+                cookies = self.driver.get_cookies()
+                cookie_file = os.path.join(self.persistent_profile_dir, "linkedin_session.json")
+                
+                session_data = {
+                    'cookies': cookies,
+                    'user_email': self.email,
+                    'timestamp': datetime.now().isoformat(),
+                    'user_agent': self.driver.execute_script("return navigator.userAgent;")
+                }
+                
+                with open(cookie_file, 'w') as f:
+                    json.dump(session_data, f, indent=2)
+                    
+                logger.info("✅ Session cookies saved successfully")
+                
+        except Exception as e:
+            logger.debug(f"Could not save session cookies: {e}")
+
+    def _is_logged_in(self):
+        """Enhanced login status check"""
+        try:
+            current_url = self.driver.current_url
+            
+            # Check URL patterns
+            if any(pattern in current_url for pattern in [
+                "linkedin.com/feed",
+                "linkedin.com/in/",
+                "linkedin.com/mynetwork",
+                "linkedin.com/jobs",
+                "linkedin.com/messaging"
+            ]):
+                return True
+                
+            # Check for navigation elements
+            nav_selectors = [
+                "[data-test-id='global-nav']",
+                ".global-nav",
+                ".global-nav__nav",
+                "nav.global-nav"
+            ]
+            
+            for selector in nav_selectors:
+                if len(self.driver.find_elements(By.CSS_SELECTOR, selector)) > 0:
+                    return True
+                    
+            # Check for profile icon
+            profile_selectors = [
+                ".global-nav__primary-item--profile",
+                ".global-nav__me-photo",
+                "[data-test-id='nav-profile-photo']"
+            ]
+            
+            for selector in profile_selectors:
+                if len(self.driver.find_elements(By.CSS_SELECTOR, selector)) > 0:
+                    return True
+                    
+            return False
+            
+        except Exception:
+            return False
+
+    def _fet_chrome_user_data_dir(self):
+        """Automatically detect Chrome user data directory based on OS"""
+        system = platform.system()
+        
+        if system == "Windows":
+            base_path = os.path.join(os.environ.get("LOCALAPPDATA", ""), "Google", "Chrome", "User Data")
+            if os.path.exists(base_path):
+                return base_path
+            # Alternative Windows path
+            alt_path = os.path.join(os.environ.get("USERPROFILE", ""), "AppData", "Local", "Google", "Chrome", "User Data")
+            if os.path.exists(alt_path):
+                return alt_path
+                
+        elif system == "Darwin":  # macOS
+            base_path = os.path.expanduser("~/Library/Application Support/Google/Chrome")
+            if os.path.exists(base_path):
+                return base_path
+                
+        else:  # Linux
+            base_path = os.path.expanduser("~/.config/google-chrome")
+            if os.path.exists(base_path):
+                return base_path
+            # Alternative Linux path
+            alt_path = os.path.expanduser("~/.config/chromium")
+            if os.path.exists(alt_path):
+                return alt_path
+        
+        return None
+
+    def _setup_with_copied_profile(self, options):
+        """Setup using a copied Chrome profile to avoid 'already in use' errors"""
+        try:
+            chrome_user_data = self._get_chrome_user_data_dir()
+            if not chrome_user_data:
+                logger.info("Chrome user data directory not found, skipping profile method")
+                return False
+                
+            # Find the Default profile or first available profile
+            profile_dir = None
+            for possible_profile in ["Default", "Profile 1", "Profile 2"]:
+                potential_path = os.path.join(chrome_user_data, possible_profile)
+                if os.path.exists(potential_path):
+                    profile_dir = potential_path
+                    break
+                    
+            if not profile_dir:
+                logger.info("No Chrome profiles found")
+                return False
+                
+            # Create a temporary directory for our automation profile
+            automation_profile_base = os.path.join(tempfile.gettempdir(), "linkedin_automation_chrome")
+            if os.path.exists(automation_profile_base):
+                shutil.rmtree(automation_profile_base, ignore_errors=True)
+            os.makedirs(automation_profile_base, exist_ok=True)
+            
+            # Copy essential profile files for session persistence
+            automation_profile_dir = os.path.join(automation_profile_base, "Default")
+            os.makedirs(automation_profile_dir, exist_ok=True)
+            
+            # Copy key files for login persistence
+            files_to_copy = [
+                "Cookies", "Local State", "Login Data", "Preferences", 
+                "Network Action Predictor", "Local Storage"
+            ]
+            
+            for file_name in files_to_copy:
+                src_file = os.path.join(profile_dir, file_name)
+                dst_file = os.path.join(automation_profile_dir, file_name)
+                
+                try:
+                    if os.path.isfile(src_file):
+                        shutil.copy2(src_file, dst_file)
+                    elif os.path.isdir(src_file):
+                        if os.path.exists(dst_file):
+                            shutil.rmtree(dst_file)
+                        shutil.copytree(src_file, dst_file)
+                except (PermissionError, OSError) as e:
+                    logger.debug(f"Could not copy {file_name}: {e}")
+                    continue
+                    
+            # Configure Chrome to use our automation profile
+            options.add_argument(f"--user-data-dir={automation_profile_base}")
+            options.add_argument("--profile-directory=Default")
+            
+            # Store the profile path for cleanup
+            self.automation_profile_path = automation_profile_base
+            
+            self.driver = webdriver.Chrome(options=options)
+            self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            self.wait = WebDriverWait(self.driver, 10)
+            self.driver.set_page_load_timeout(30)
+            self.driver.implicitly_wait(5)
+            
+            logger.info("✅ Driver initialized with copied Chrome profile for session persistence")
+            return True
+            
+        except Exception as e:
+            logger.debug(f"Copied profile setup failed: {e}")
+            return False
+
+    def _setup_with_cookies(self, options):
+        """Fallback setup with cookie-based session persistence"""
+        # Create a dedicated directory for our automation
+        automation_dir = os.path.join(tempfile.gettempdir(), "linkedin_automation_simple")
+        os.makedirs(automation_dir, exist_ok=True)
+        
+        options.add_argument(f"--user-data-dir={automation_dir}")
+        
+        self.driver = webdriver.Chrome(options=options)
+        self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+        self.wait = WebDriverWait(self.driver, 10)
+        self.driver.set_page_load_timeout(30)
+        self.driver.implicitly_wait(5)
+        
+        # Load saved cookies if they exist
+        self._load_linkedin_cookies()
+        
+        logger.info("✅ Driver initialized with cookie-based session persistence")
+
+    def _save_linkedin_cookies(self):
+        """Save LinkedIn cookies after successful login"""
+        try:
+            if "linkedin.com" in self.driver.current_url:
+                cookies = self.driver.get_cookies()
+                cookie_file = os.path.join(tempfile.gettempdir(), "linkedin_cookies.json")
+                
+                with open(cookie_file, 'w') as f:
+                    json.dump(cookies, f)
+                logger.info("✅ LinkedIn cookies saved for future sessions")
+        except Exception as e:
+            logger.debug(f"Could not save cookies: {e}")
+
+    def _load_session_cookies(self):
+        """Load saved session cookies"""
+        try:
+            cookie_file = os.path.join(self.persistent_profile_dir, "linkedin_session.json")
+            
+            if os.path.exists(cookie_file):
+                with open(cookie_file, 'r') as f:
+                    session_data = json.load(f)
+                    
+                # Check if session is for current user
+                if session_data.get('user_email') != self.email:
+                    logger.info("🔄 Session is for different user, skipping cookie load")
+                    return False
+                    
+                # Navigate to LinkedIn first
+                self.driver.get("https://www.linkedin.com")
+                time.sleep(1)
+                
+                # Load cookies
+                for cookie in session_data.get('cookies', []):
+                    try:
+                        self.driver.add_cookie(cookie)
+                    except Exception as e:
+                        logger.debug(f"Could not add cookie: {e}")
+                        
+                logger.info("✅ Previous session cookies loaded")
+                return True
+                
+        except Exception as e:
+            logger.debug(f"Could not load session cookies: {e}")
+            
+        return False
+    def _mark_session_active(self):
+        """Mark session as active"""
+        try:
+            session_file = os.path.join(self.persistent_profile_dir, "session_status.json")
+            session_status = {
+                'active': True,
+                'user_email': self.email,
+                'last_activity': datetime.now().isoformat()
+            }
+            
+            with open(session_file, 'w') as f:
+                json.dump(session_status, f, indent=2)
+                
+        except Exception as e:
+            logger.debug(f"Could not mark session active: {e}")
+
+    def _check_session_health(self):
+        """Check if current session is healthy"""
+        try:
+            if not self.driver:
+                return False
+                
+            # Try to access a LinkedIn page
+            current_url = self.driver.current_url
+            if "linkedin.com" not in current_url:
+                self.driver.get("https://www.linkedin.com/feed")
+                time.sleep(2)
+                
+            return self._is_logged_in()
+            
+        except Exception:
+            return False
+
+    def ensure_linkedin_session(self):
+        """Ensure we have an active LinkedIn session"""
+        if not self._check_session_health():
+            logger.info("🔄 Session lost, re-establishing connection...")
+            return self.login()
+        return True
+    
+    def close(self):
+        """Enhanced cleanup"""
+        if self.driver:
+            try:
+                # Save cookies before closing
+                self._save_linkedin_cookies()
+            except:
+                pass
+            self.driver.quit()
+            
+        # Clean up automation profile if it exists
+        if hasattr(self, 'automation_profile_path') and os.path.exists(self.automation_profile_path):
+            try:
+                shutil.rmtree(self.automation_profile_path, ignore_errors=True)
+            except:
+                pass
+
+    def setup_ai(self):
+        """Initialize Gemini AI"""
+        try:
+            genai.configure(api_key=self.api_key)
+            self.model = genai.GenerativeModel('gemini-1.5-flash')
+            logger.info("✅ Gemini AI initialized successfully")
+        except Exception as e:
+            logger.error(f"❌ Gemini AI initialization failed: {e}")
+            self.model = None
+            
+    def load_tracked_profiles(self):
+        """Load previously messaged profiles to avoid duplicates"""
+        if os.path.exists(self.tracked_profiles_file):
+            try:
+                with open(self.tracked_profiles_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.tracked_profiles = set(data)
+                    logger.info(f"✅ Loaded {len(self.tracked_profiles)} previously messaged profiles")
+            except Exception as e:
+                logger.warning(f"⚠️ Could not load tracked profiles: {e}")
+                self.tracked_profiles = set()
+        else:
+            self.tracked_profiles = set()
+            
+    def save_tracked_profiles(self):
+        """Save tracked profiles to file"""
+        try:
+            with open(self.tracked_profiles_file, 'w', encoding='utf-8') as f:
+                json.dump(list(self.tracked_profiles), f, ensure_ascii=False, indent=2)
+                logger.info(f"✅ Saved {len(self.tracked_profiles)} tracked profiles")
+        except Exception as e:
+            logger.error(f"❌ Could not save tracked profiles: {e}")
+            
+    def is_profile_messaged(self, profile_url):
+        """Check if profile has been messaged before"""
+        return profile_url in self.tracked_profiles
+        
+    def add_profile_to_tracked(self, profile_url):
+        """Add profile to tracked list"""
+        self.tracked_profiles.add(profile_url)
+        self.save_tracked_profiles()
+        logger.info(f"📝 Added profile to tracked list: {profile_url}")
+        
+    def human_delay(self, min_seconds=1, max_seconds=3):
+        """Add human-like delays"""
+        delay = random.uniform(min_seconds, max_seconds)
+        time.sleep(delay)
+        
+    def type_like_human(self, element, text):
+        """Type text with human-like delays"""
+        element.clear()
+        for char in text:
+            element.send_keys(char)
+            time.sleep(random.uniform(0.05, 0.2))
+    def _handle_connection_modal(self, name):
+        """Handle the connection modal popup"""
+        try:
+            # Try to add note
+            try:
+                add_note_btn = WebDriverWait(self.driver, 3).until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Add a note')]"))
+                )
+                add_note_btn.click()
+                time.sleep(1)
+                
+                note_area = WebDriverWait(self.driver, 3).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "textarea[name='message']"))
+                )
+                
+                note_text = f"Hi {name.split()[0]}, I'd love to connect and learn about your professional journey!"
+                note_area.send_keys(note_text)
+                time.sleep(1)
+                
+            except TimeoutException:
+                logger.info(f"No note option for {name}")
+            
+            # Click send
+            send_selectors = [
+                "//button[normalize-space()='Send now']",
+                "//button[normalize-space()='Send']",
+                "//button[contains(@aria-label,'Send')]"
+            ]
+            
+            for selector in send_selectors:
+                try:
+                    send_btn = WebDriverWait(self.driver, 5).until(
+                        EC.element_to_be_clickable((By.XPATH, selector))
+                    )
+                    send_btn.click()
+                    
+                    # Wait for confirmation
+                    WebDriverWait(self.driver, 5).until(
+                        EC.presence_of_element_located((
+                            By.XPATH, 
+                            "//button[normalize-space()='Pending'] | //div[contains(text(), 'Invitation sent')]"
+                        ))
+                    )
+                    return True
+                    
+                except TimeoutException:
+                    continue
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Modal handling error for {name}: {e}")
+            return False
+    def _attempt_connection(self, button, name):
+        """Attempt to connect with a person"""
+        try:
+            # Scroll and click
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", button)
+            time.sleep(1)
+            button.click()
+            time.sleep(2)
+            
+            # Handle modal
+            return self._handle_connection_modal(name)
+            
+        except Exception as e:
+            logger.warning(f"Connection attempt failed for {name}: {e}")
+            return False
+
+    def safe_connect_with_recovery(self, button, name):
+        """Connect with session recovery on failure"""
+        max_attempts = 2
+        
+        for attempt in range(max_attempts):
+            try:
+                # Scroll to button
+                self.driver.execute_script(
+                    "arguments[0].scrollIntoView({block: 'center'});", button
+                )
+                time.sleep(1)
+                
+                # Click connect
+                button.click()
+                time.sleep(2)
+                
+                # Handle modal
+                return self.handle_connect_modal_safe(name)
+                
+            except Exception as e:
+                logger.warning(f"Connect attempt {attempt + 1} failed for {name}: {e}")
+                
+                if attempt < max_attempts - 1:
+                    # Try to recover session
+                    try:
+                        self.driver.current_url
+                    except Exception:
+                        logger.info("Recovering session...")
+                        self.setup_driver()
+                        if not self.login():
+                            return False
+                    time.sleep(2)
+                
+        return False
+
+            
+    def safe_click(self, element):
+        """Safely click an element with fallback methods"""
+        try:
+            self.driver.execute_script("arguments[0].scrollIntoView({behavior:'smooth',block:'center'});", element)
+            time.sleep(random.uniform(0.5, 1.5))
+            element.click()
+            return True
+        except (ElementClickInterceptedException, ElementNotInteractableException):
+            try:
+                ActionChains(self.driver).move_to_element(element).pause(0.5).click().perform()
+                return True
+            except Exception as e:
+                logger.warning(f"Safe click failed: {e}")
+                return False
+                
+    # def login(self):
+    #     """Login to LinkedIn"""
+    #     try:
+    #         logger.info("🔐 Attempting LinkedIn login...")
+    #         self.driver.get("https://www.linkedin.com/login")
+            
+    #         # Wait for login page to load
+    #         self.wait.until(EC.presence_of_element_located((By.ID, "username")))
+    #         self.human_delay(2, 4)
+            
+    #         # Enter credentials
+    #         username_field = self.driver.find_element(By.ID, "username")
+    #         self.type_like_human(username_field, self.email)
+            
+    #         self.human_delay(1, 2)
+            
+    #         password_field = self.driver.find_element(By.ID, "password")
+    #         self.type_like_human(password_field, self.password)
+            
+    #         self.human_delay(1, 2)
+            
+    #         # Click login
+    #         login_button = self.driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
+    #         login_button.click()
+            
+    #         # Wait for login success
+    #         try:
+    #             self.wait.until(
+    #                 lambda d: any([
+    #                     "feed" in d.current_url,
+    #                     "linkedin.com/in/" in d.current_url,
+    #                     len(d.find_elements(By.CSS_SELECTOR, "[data-test-id='global-nav']")) > 0,
+    #                     len(d.find_elements(By.CSS_SELECTOR, ".global-nav")) > 0
+    #                 ])
+    #             )
+    #             logger.info("✅ LinkedIn login successful!")
+    #             self.human_delay(3, 5)
+    #             return True
+    #         except TimeoutException:
+    #             logger.error("❌ Login timeout - may need manual intervention")
+    #             return False
+                
+    #     except Exception as e:
+    #         logger.error(f"❌ Login failed: {e}")
+    #         return False
+            
+    def extract_profile_data(self):
+        """Extract profile data from current LinkedIn profile page"""
+        profile_data = {}
+        
+        try:
+            # Wait for profile to load
+            self.wait.until(
+                EC.any_of(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "h1")),
+                    EC.presence_of_element_located((By.CSS_SELECTOR, ".pv-text-details__left-panel"))
+                )
+            )
+            
+            # Extract name
+            name_selectors = [
+                "h1.text-heading-xlarge",
+                ".pv-text-details__left-panel h1",
+                "[data-test-id='profile-name'] h1",
+                ".ph5 h1"
+            ]
+            
+            for selector in name_selectors:
+                try:
+                    name_elem = self.driver.find_element(By.CSS_SELECTOR, selector)
+                    profile_data['extracted_name'] = name_elem.text.strip()
+                    logger.info(f"📝 Extracted name: {profile_data['extracted_name']}")
+                    break
+                except NoSuchElementException:
+                    continue
+                    
+            # Extract headline
+            headline_selectors = [
+                ".text-body-medium.break-words",
+                ".pv-text-details__left-panel .text-body-medium",
+                "[data-test-id='profile-headline']"
+            ]
+            
+            for selector in headline_selectors:
+                try:
+                    headline_elem = self.driver.find_element(By.CSS_SELECTOR, selector)
+                    headline_text = headline_elem.text.strip()
+                    if headline_text and headline_text != profile_data.get('extracted_name', ''):
+                        profile_data['extracted_headline'] = headline_text
+                        logger.info(f"💼 Extracted headline: {headline_text[:50]}...")
+                        break
+                except NoSuchElementException:
+                    continue
+                    
+            # Extract about section
+            about_selectors = [
+                "[data-test-id='about-section'] .pv-shared-text-with-see-more span[aria-hidden='true']",
+                ".pv-about-section .pv-shared-text-with-see-more span"
+            ]
+            
+            for selector in about_selectors:
+                try:
+                    about_elem = self.driver.find_element(By.CSS_SELECTOR, selector)
+                    about_text = about_elem.text.strip()
+                    if about_text:
+                        profile_data['about_snippet'] = about_text[:150] + "..." if len(about_text) > 150 else about_text
+                        logger.info(f"📄 Extracted about: {profile_data['about_snippet'][:50]}...")
+                        break
+                except NoSuchElementException:
+                    continue
+                    
+            # Set defaults
+            if not profile_data.get('extracted_name'):
+                profile_data['extracted_name'] = "Professional"
+            if not profile_data.get('about_snippet'):
+                profile_data['about_snippet'] = ""
+                
+        except Exception as e:
+            logger.warning(f"⚠️ Profile data extraction failed: {e}")
+            profile_data = {
+                'extracted_name': 'Professional',
+                'extracted_headline': '',
+                'about_snippet': ''
+            }
+            
+        return profile_data
+        
+    def generate_message(self, name, company, role, service_1="", service_2="", profile_data=None):
+        """Generate personalized LinkedIn message using AI"""
+        if not self.model:
+            fallback_msg = f"Hi {name}, I'm impressed by your work as {role} at {company}. I'd love to connect and learn more about your experience in {service_1 or 'your field'}. Looking forward to connecting!"
+            return fallback_msg[:280]
+            
+        actual_name = profile_data.get('extracted_name', name) if profile_data else name
+        about_snippet = profile_data.get('about_snippet', '') if profile_data else ''
+        
+        # Enhanced prompt for better personalization
+        message_template = f"""Create a highly personalized LinkedIn connection message for:
+- Name: {actual_name}
+- Company: {company}
+- Role: {role}
+- Services/Expertise: {service_1}, {service_2}
+- About: {about_snippet}
+
+Create a professional, engaging message under 280 characters that:
+1. Addresses them by name (ONLY USE FIRST NAMES)
+2. References their specific work/company
+3. Mentions a relevant connection point
+4. Has a clear call to action
+5. Return ONLY the message text, no labels or formatting.
+6. No content inside square brackets or quotes.
+
+Example tone: "Hi [FirstName], I noticed your innovative work in [specific area] at [Company]. I'm also passionate about [relevant connection] and would love to exchange insights on [specific topic]. Looking forward to connecting!"
+
+Return ONLY the message text, no labels or formatting."""
+
+        for attempt in range(3):
+            try:
+                response = self.model.generate_content(message_template)
+                message = response.text.strip()
+                
+                # Clean up message
+                message = re.sub(r'^(Message:|Icebreaker:)\s*', '', message, flags=re.IGNORECASE)
+                message = message.strip('"\'[]')
+                
+                if len(message) > 280:
+                    message = message[:277] + "..."
+                    
+                return message
+                
+            except Exception as e:
+                if "429" in str(e) or "ResourceExhausted" in str(e):
+                    wait_time = 30 * (attempt + 1)
+                    logger.warning(f"⏳ AI rate limit hit. Retrying in {wait_time} seconds...")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"❌ AI generation error: {e}")
+                    break
+                    
+        # Fallback message
+        fallback_msg = f"Hi {actual_name}, I'm impressed by your {role} work at {company}. I'd love to connect and exchange insights about {service_1 or 'industry trends'}. Looking forward to connecting!"
+        return fallback_msg[:280]
+        
+    def send_connection_request_with_note(self, message, name):
+        if not self.driver:             # session lost? rebuild once, otherwise continue
+            self.setup_driver()
+            self.login()
+        """Send connection request with personalized note"""
+        logger.info(f"🤝 Attempting connection request with note to {name}...")
+        
+        # Find Connect button
+        connect_selectors = [
+            "button.artdeco-button.artdeco-button--2.artdeco-button--primary[aria-label*='Connect']",
+            "//button[contains(@aria-label, 'Connect') and contains(@class, 'artdeco-button--primary')]",
+            "//button[.//span[text()='Connect']]"
+        ]
+        
+        connect_button = None
+        for selector in connect_selectors:
+            try:
+                if selector.startswith("//"):
+                    connect_button = self.wait.until(EC.element_to_be_clickable((By.XPATH, selector)))
+                else:
+                    connect_button = self.wait.until(EC.element_to_be_clickable((By.CSS_SELECTOR, selector)))
+                break
+            except TimeoutException:
+                continue
+                
+        if not connect_button:
+            logger.error("❌ Connect button not found")
+            return False
+            
+        # Click Connect
+        if not self.safe_click(connect_button):
+            logger.error("❌ Failed to click Connect button")
+            return False
+            
+        logger.info("✅ Connect button clicked")
+        self.human_delay(2, 3)
+        
+        try:
+            # Try to add a note first
+            try:
+                add_note_button = WebDriverWait(self.driver, 3).until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Add a note')]"))
+                )
+                add_note_button.click()
+                time.sleep(1)
+                
+                # Find note text area
+                note_area = WebDriverWait(self.driver, 3).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "textarea[name='message'], #custom-message"))
+                )
+                
+                # Type the note
+                for char in message:
+                    note_area.send_keys(char)
+                    time.sleep(random.uniform(0.05, 0.15))
+                
+                logger.info(f"✅ Added personalized note for {name}")
+                
+            except TimeoutException:
+                logger.info(f"ℹ️ No 'Add a note' option for {name} - sending without note")
+            
+            # Click send (catch any of the variants)
+            for xpath in [
+                "//button[normalize-space()='Send now']",
+                "//button[normalize-space()='Send']",
+                "//button[contains(@aria-label,'Send')]"
+            ]:
+                try:
+                    btn = WebDriverWait(self.driver, 5).until(
+                        EC.element_to_be_clickable((By.XPATH, xpath))
+                    )
+                    btn.click()
+                    break
+                except TimeoutException:
+                    continue
+            else:
+                logger.error(f"❌ Could not find send button for {name}")
+                return False
+            
+            # Wait for success confirmation
+            try:
+                WebDriverWait(self.driver, 5).until(
+                    EC.presence_of_element_located((
+                        By.XPATH,
+                        "//button[normalize-space()='Pending'] | //div[contains(text(), 'Invitation sent')]"
+                    ))
+                )
+                logger.info(f"✅ Connection request sent to {name}!")
+                self.human_delay(2, 4)
+                return True
+            except TimeoutException:
+                return False
+                
+        except Exception as e:
+            logger.error(f"❌ Error sending connection request: {e}")
+            return False
+
+    def search_profiles(self, keywords, location="", industry="", max_invites=20):
+        """Search profiles via keyword and send connection requests from within class context."""
+        logger.info(f"🔍 Searching for: {keywords}")
+        if not self.login():
+            logger.error("❌ Login failed - cannot proceed with keyword search")
+            return 0
+
+        url = (
+            "https://www.linkedin.com/search/results/people/"
+            f"?keywords={quote_plus(keywords)}&origin=GLOBAL_SEARCH_HEADER"
+        )
+        self.driver.get(url)
+        time.sleep(3)
+
+        sent_count = 0
+        page_loops = 0
+        total_attempts = 0
+
+        while sent_count < max_invites and page_loops < 10:
+            logger.info(f"📊 Status: {sent_count}/{max_invites} invitations sent (attempts: {total_attempts})")
+
+            connect_buttons = self.find_connect_buttons_enhanced()
+            if not connect_buttons:
+                logger.info("No connect buttons found on this page.")
+                if not self.go_to_next_page():
+                    break
+                page_loops += 1
+                continue
+
+            for button in connect_buttons:
+                if sent_count >= max_invites:
+                    logger.info(f"🎯 Target reached: {sent_count}/{max_invites}")
+                    return sent_count
+
+                try:
+                    name = self.extract_name_from_search_result(button)
+                except Exception:
+                    name = "Professional"
+
+                logger.info(f"🔄 Attempting to connect with {name}")
+
+                success = self._attempt_connection(button, name)
+                total_attempts += 1
+
+                if success:
+                    sent_count += 1
+                    logger.info(f"✅ Invitation sent to {name} ({sent_count}/{max_invites})")
+                    self.human_delay(2, 4)
+                else:
+                    logger.info(f"❌ Failed to send invitation to {name}")
+                    self.human_delay(1, 2)
+
+            if not self.go_to_next_page():
+                logger.info("No more pages to navigate.")
+                break
+
+            page_loops += 1
+            self.human_delay(1, 3)
+
+        logger.info(f"🏁 Finished: {sent_count}/{max_invites} invitations sent ({total_attempts} total attempts)")
+        return sent_count
+        
+        
+    def go_to_next_page(self):
+        try:
+            next_btn = WebDriverWait(self.driver, 5).until(
+                EC.element_to_be_clickable((
+                    By.XPATH, 
+                    "//button[@aria-label='Next' and not(@disabled)] | //a[@aria-label='Next']"
+                ))
+            )
+                
+            self.driver.execute_script(
+                "arguments[0].scrollIntoView({block: 'center'});", next_btn
+            )
+            next_btn.click()
+            time.sleep(2)
+            return True
+                
+        except TimeoutException:
+            return False
+        except Exception as e:
+            logger.warning(f"Next page navigation error: {e}")
+            return False
+    
+    def find_connect_buttons_enhanced(self):
+        """Enhanced button detection with multiple strategies"""
+        selectors = [
+            "//button[contains(text(), 'Connect') and not(contains(@class, 'artdeco-button--disabled'))]",
+            "//button[.//span[text()='Connect'] and not(contains(@class, 'disabled'))]",
+            "//button[contains(@aria-label, 'Connect') and not(@disabled)]"
+        ]
+        
+        buttons = []
+        for selector in selectors:
+            try:
+                found_buttons = self.driver.find_elements(By.XPATH, selector)
+                # Filter out already processed buttons
+                for btn in found_buttons:
+                    if btn.is_displayed() and btn.is_enabled():
+                        buttons.append(btn)
+            except Exception as e:
+                logger.debug(f"Selector failed: {selector}, Error: {e}")
+        
+        # Remove duplicates
+        unique_buttons = list(dict.fromkeys(buttons))
+        logger.info(f"Found {len(unique_buttons)} available connect buttons")
+        return unique_buttons
+    
+    def click_connect_and_validate(self, button):
+        """Scrolls to and clicks the Connect button, handles the modal, and returns True if the invite went through"""
+        try:
+            # Scroll & click via JavaScript (most reliable)
+            self.driver.execute_script("arguments[0].scrollIntoView(true);", button)
+            self.driver.execute_script("arguments[0].click();", button)
+            
+            # Give a brief pause before modal appears
+            time.sleep(1)
+            
+            return self.handle_connect_modal()
+            
+        except Exception as e:
+            logger.error(f"Error clicking connect button: {e}")
+            return False
+            
+    #def search_and_connect_from_keywords(self, keywords, max_invites=20):
+        
+
+                
+    def _extract_name_from_button(self, button):
+        """Extract name from connect button context"""
+        try:
+            parent = button.find_element(By.XPATH, "./ancestor::div[contains(@class, 'entity-result')]")
+            name_elem = parent.find_element(By.CSS_SELECTOR, "[aria-hidden='true']")
+            return name_elem.text.strip()
+        except Exception:
+            return "Professional"
+        
+
+    def extract_name_from_search_result(self, button):
+        """Extract name from search result card"""
+        try:
+            # Find the parent container
+            parent = button.find_element(By.XPATH, "./ancestor::div[contains(@class, 'search-result__info')]")
+            name_elem = parent.find_element(By.CSS_SELECTOR, ".search-result__result-link")
+            return name_elem.text.strip()
+        except:
+            return "Professional"
+
+
+    def handle_connect_modal_safe(self, name):
+        """Handle connection modal with error recovery"""
+        try:
+            # Try to add note first
+            try:
+                add_note_btn = WebDriverWait(self.driver, 3).until(
+                    EC.element_to_be_clickable((By.XPATH, "//button[contains(text(), 'Add a note')]"))
+                )
+                add_note_btn.click()
+                time.sleep(1)
+                
+                # Type note
+                note_area = WebDriverWait(self.driver, 3).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, "textarea[name='message']"))
+                )
+                note_text = f"Hi {name.split()[0]}, I'd love to connect and learn about your professional journey!"
+                note_area.send_keys(note_text)
+                time.sleep(1)
+                
+            except TimeoutException:
+                logger.info(f"No note option for {name}")
+            
+            # Click send
+            send_selectors = [
+                "//button[normalize-space()='Send now']",
+                "//button[normalize-space()='Send']",
+                "//button[contains(@aria-label,'Send')]"
+            ]
+            
+            for selector in send_selectors:
+                try:
+                    send_btn = WebDriverWait(self.driver, 5).until(
+                        EC.element_to_be_clickable((By.XPATH, selector))
+                    )
+                    send_btn.click()
+                    
+                    # Wait for confirmation
+                    WebDriverWait(self.driver, 5).until(
+                        EC.presence_of_element_located((
+                            By.XPATH, 
+                            "//button[normalize-space()='Pending'] | //div[contains(text(), 'Invitation sent')]"
+                        ))
+                    )
+                    return True
+                    
+                except TimeoutException:
+                    continue
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Modal handling error for {name}: {e}")
+            return False
+        
+    def extract_name_from_search_result(self, button):
+        """Extract name from search result card"""
+        try:
+            # Find the parent container
+            parent = button.find_element(By.XPATH, "./ancestor::div[contains(@class, 'entity-result')]")
+            name_elem = parent.find_element(By.CSS_SELECTOR, "[aria-hidden='true']")
+            return name_elem.text.strip()
+        except Exception:
+            return "Professional"
+
+    def human_delay(self, min_seconds=1, max_seconds=3):
+        """Add human-like delays"""
+        delay = random.uniform(min_seconds, max_seconds)
+        time.sleep(delay)
+
+    def safe_click(self, element):
+        """Safely click an element with fallback via ActionChains"""
+        try:
+            self.driver.execute_script("arguments[0].scrollIntoView({behavior:'smooth',block:'center'});", element)
+            time.sleep(random.uniform(0.5, 1.5))
+            element.click()
+            return True
+        except (ElementClickInterceptedException, ElementNotInteractableException):
+            try:
+                ActionChains(self.driver).move_to_element(element).pause(0.5).click().perform()
+                return True
+            except Exception as e:
+                logger.warning(f"Click fallback failed: {e}")
+                return False
+        except Exception as e:
+            logger.warning(f"Click failed: {e}")
+            return False
+            
+    def close(self):
+        """Clean up resources"""
+        try:
+            if self.driver:
+                self.driver.quit()
+                
+            # Clean up temporary profile directory
+            self._cleanup_profile()
+                
+        except Exception as e:
+            logger.warning(f"Cleanup warning: {e}")
+    
+    def _healthy(self):
+        try:
+            self.driver.title                # simple ping
+            return True
+        except Exception:
+            return False
+
+    def _ensure(self):
+        if self._healthy():
+            return
+        self.close()
+        self.setup_driver()
+        self.login()                         # silent re-login
+
+            
+    def __del__(self):
+        """Cleanup when object is destroyed"""
+        self.close()

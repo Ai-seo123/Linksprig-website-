@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+
+{% block title %}AI Assistant - LinkedIn Automation{% endblock %}
+
+{% block content %}
+<div class="page-container">
+    <div class="page-header">
+        <h1><i class="fas fa-robot"></i> AI Message Assistant</h1>
+        <p>Enhance your LinkedIn messages with AI-powered suggestions</p>
+    </div>
+
+    <div class="ai-container">
+        <div class="ai-input-section">
+            <form method="POST" class="ai-form">
+                <div class="form-group">
+                    <label for="message">Your Message</label>
+                    <textarea id="message" name="message" rows="6" required placeholder="Enter your LinkedIn message here...">{{ original_message or '' }}</textarea>
+                </div>
+                <button type="submit" class="ai-button">
+                    <i class="fas fa-magic"></i>
+                    Enhance with AI
+                </button>
+            </form>
+        </div>
+
+        {% if ai_response %}
+        <div class="ai-response-section">
+            <h3><i class="fas fa-lightbulb"></i> AI-Enhanced Message</h3>
+            <div class="response-box">
+                {{ ai_response }}
+            </div>
+            <div class="response-actions">
+                <button onclick="copyToClipboard('{{ ai_response }}')" class="copy-btn">
+                    <i class="fas fa-copy"></i>
+                    Copy Response
+                </button>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(function() {
+        alert('Response copied to clipboard!');
+    });
+}
+</script>
+{% endblock %}

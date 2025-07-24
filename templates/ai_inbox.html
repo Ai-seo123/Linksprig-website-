@@ -1,0 +1,99 @@
+{% extends "base.html" %}
+
+{% block title %}AI Inbox Handler - LinkedIn Automation{% endblock %}
+
+{% block content %}
+<div class="page-container">
+    <div class="page-header">
+        <h1><i class="fas fa-inbox"></i> AI Inbox Handler</h1>
+        <p>Process LinkedIn messages and generate AI-powered replies</p>
+    </div>
+
+    <div class="inbox-container">
+        <div class="inbox-section">
+            <h3><i class="fas fa-robot"></i> AI Reply Assistant</h3>
+            <p>This feature will:</p>
+            <ul>
+                <li>Scan your LinkedIn inbox for unread messages</li>
+                <li>Generate AI-powered reply suggestions</li>
+                <li>Allow you to review and send replies</li>
+                <li>Maintain professional communication standards</li>
+            </ul>
+            
+            <form method="POST" class="inbox-form">
+                <button type="submit" class="inbox-btn">
+                    <i class="fas fa-paper-plane"></i>
+                    Process Inbox
+                </button>
+            </form>
+        </div>
+
+        {% if inbox_result %}
+        <div class="inbox-results">
+            {% if inbox_result.error %}
+            <div class="error-message">
+                <i class="fas fa-exclamation-triangle"></i>
+                Error: {{ inbox_result.error }}
+            </div>
+            {% elif inbox_result.success %}
+            <h3><i class="fas fa-chart-bar"></i> Processing Results</h3>
+            <div class="inbox-summary">
+                <div class="stats-grid">
+                    <div class="stat-item">
+                        <span class="stat-number">{{ inbox_result.processed_count }}</span>
+                        <span class="stat-label">Messages Processed</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number">{{ inbox_result.replied_count }}</span>
+                        <span class="stat-label">Replies Sent</span>
+                    </div>
+                </div>
+            </div>
+            
+            {% if inbox_result.conversations %}
+            <div class="conversations-processed">
+                <h4>Conversation Details</h4>
+                <div class="conversations-list">
+                    {% for conversation in inbox_result.conversations %}
+                    <div class="conversation-item">
+                        <div class="conversation-header">
+                            <span class="sender-name">{{ conversation.sender }}</span>
+                            <span class="conversation-status">
+                                {% if conversation.replied %}
+                                    <i class="fas fa-check-circle text-success"></i> Replied
+                                {% else %}
+                                    <i class="fas fa-times-circle text-warning"></i> Skipped
+                                {% endif %}
+                            </span>
+                        </div>
+                        <div class="conversation-content">
+                            <div class="incoming-message">
+                                <strong>Incoming:</strong> {{ conversation.incoming_message }}
+                            </div>
+                            <div class="ai-reply">
+                                <strong>AI Reply:</strong> {{ conversation.ai_reply }}
+                            </div>
+                        </div>
+                        <div class="conversation-time">
+                            {{ conversation.timestamp }}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+            {% endif %}
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+<script>
+// Auto-refresh if processing is in progress
+{% if session.current_inbox_process and not inbox_result %}
+setTimeout(function() {
+    location.reload();
+}, 5000);
+{% endif %}
+</script>
+{% endblock %}

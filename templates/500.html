@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Server error{% endblock %}
+{% block content %}
+<div class="error-container">
+  <h1>500</h1>
+  <p>Something went wrong on our side.</p>
+  <pre style="white-space:pre-wrap;text-align:left">
+    {{ error or 'Please try again later.' }}
+  </pre>
+  <a href="{{ url_for('dashboard') }}" class="error-btn">
+      <i class="fas fa-home"></i> Home
+  </a>
+</div>
+{% endblock %}

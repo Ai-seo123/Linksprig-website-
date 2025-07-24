@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}LinkedIn Automation Dashboard{% endblock %}</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body>
+    {% if session.user_id %}
+    <nav class="navbar">
+        <div class="nav-container">
+            <div class="nav-logo">
+                <i class="fab fa-linkedin"></i>
+                <span>LinkedIn Automation</span>
+            </div>
+            <!-- Update the nav-links section -->
+            <div class="nav-links">
+            <a href="{{ url_for('dashboard') }}" class="nav-link {% if request.endpoint == 'dashboard' %}active{% endif %}">
+            <i class="fas fa-tachometer-alt"></i> Dashboard
+        </a>
+        <a href="{{ url_for('settings') }}" class="nav-link {% if request.endpoint == 'settings' %}active{% endif %}">
+            <i class="fas fa-cog"></i> Settings
+        </a>
+        <a href="{{ url_for('ai_handler') }}" class="nav-link {% if request.endpoint == 'ai_handler' %}active{% endif %}">
+            <i class="fas fa-robot"></i> AI Assistant
+        </a>
+        <a href="{{ url_for('ai_inbox') }}" class="nav-link {% if request.endpoint == 'ai_inbox' %}active{% endif %}">
+            <i class="fas fa-inbox"></i> AI Inbox
+        </a>
+        <a href="{{ url_for('outreach') }}" class="nav-link {% if request.endpoint == 'outreach' %}active{% endif %}">
+            <i class="fas fa-paper-plane"></i> Outreach
+        </a>
+        <a href="{{ url_for('keyword') }}" class="nav-link {% if request.endpoint == 'keyword' %}active{% endif %}">
+            <i class="fas fa-search"></i> Search
+        </a>
+        <div class="nav-user">
+        <span class="user-name">{{ session.user_name }}</span>
+        <a href="{{ url_for('logout') }}" class="nav-link logout">
+            <i class="fas fa-sign-out-alt"></i> Logout
+        </a>
+    </div>
+    </div>
+</div>
+
+        </div>
+    </nav>
+    {% endif %}
+
+    <main class="main-content">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="flash-message flash-{{ category }}">
+                            <i class="fas fa-{% if category == 'error' %}exclamation-triangle{% elif category == 'success' %}check-circle{% elif category == 'warning' %}exclamation-circle{% else %}info-circle{% endif %}"></i>
+                            {{ message }}
+                            <button class="flash-close" onclick="this.parentElement.remove()">×</button>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+
+        {% block content %}{% endblock %}
+    </main>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.6.0/jquery.min.js"></script>
+    <script>
+        // Auto-hide flash messages after 5 seconds
+        setTimeout(function() {
+            $('.flash-message').fadeOut();
+        }, 5000);
+
+        // Add loading states to buttons
+        $('button[type="submit"]').click(function() {
+            $(this).html('<i class="fas fa-spinner fa-spin"></i> Processing...');
+        });
+    </script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>
