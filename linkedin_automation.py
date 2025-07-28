@@ -30,6 +30,7 @@ import platform
 import shutil
 import atexit
 import uuid
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -584,6 +585,7 @@ class LinkedInAutomation:
         for char in text:
             element.send_keys(char)
             time.sleep(random.uniform(0.05, 0.2))
+
     def _handle_connection_modal(self, name):
         """Handle the connection modal popup"""
         try:
@@ -637,6 +639,7 @@ class LinkedInAutomation:
         except Exception as e:
             logger.error(f"Modal handling error for {name}: {e}")
             return False
+
     def _attempt_connection(self, button, name):
         """Attempt to connect with a person"""
         try:
@@ -704,52 +707,6 @@ class LinkedInAutomation:
                 logger.warning(f"Safe click failed: {e}")
                 return False
                 
-    # def login(self):
-    #     """Login to LinkedIn"""
-    #     try:
-    #         logger.info("🔐 Attempting LinkedIn login...")
-    #         self.driver.get("https://www.linkedin.com/login")
-            
-    #         # Wait for login page to load
-    #         self.wait.until(EC.presence_of_element_located((By.ID, "username")))
-    #         self.human_delay(2, 4)
-            
-    #         # Enter credentials
-    #         username_field = self.driver.find_element(By.ID, "username")
-    #         self.type_like_human(username_field, self.email)
-            
-    #         self.human_delay(1, 2)
-            
-    #         password_field = self.driver.find_element(By.ID, "password")
-    #         self.type_like_human(password_field, self.password)
-            
-    #         self.human_delay(1, 2)
-            
-    #         # Click login
-    #         login_button = self.driver.find_element(By.CSS_SELECTOR, "button[type='submit']")
-    #         login_button.click()
-            
-    #         # Wait for login success
-    #         try:
-    #             self.wait.until(
-    #                 lambda d: any([
-    #                     "feed" in d.current_url,
-    #                     "linkedin.com/in/" in d.current_url,
-    #                     len(d.find_elements(By.CSS_SELECTOR, "[data-test-id='global-nav']")) > 0,
-    #                     len(d.find_elements(By.CSS_SELECTOR, ".global-nav")) > 0
-    #                 ])
-    #             )
-    #             logger.info("✅ LinkedIn login successful!")
-    #             self.human_delay(3, 5)
-    #             return True
-    #         except TimeoutException:
-    #             logger.error("❌ Login timeout - may need manual intervention")
-    #             return False
-                
-    #     except Exception as e:
-    #         logger.error(f"❌ Login failed: {e}")
-    #         return False
-            
     def extract_profile_data(self):
         """Extract profile data from current LinkedIn profile page"""
         profile_data = {}
@@ -886,7 +843,97 @@ Return ONLY the message text, no labels or formatting."""
         # Fallback message
         fallback_msg = f"Hi {actual_name}, I'm impressed by your {role} work at {company}. I'd love to connect and exchange insights about {service_1 or 'industry trends'}. Looking forward to connecting!"
         return fallback_msg[:280]
+
+    def process_inbox_replies(self, max_replies=5):
+        """Process unread messages with improved reliability."""
+        logger.info("🤖 Starting AI inbox processing...")
+        results = []
         
+        if not self.ensure_linkedin_session():
+            return {"success": False, "error": "Login failed"}
+        
+        if not self.navigate_to_messaging():
+            return {"success": False, "error": "Messaging navigation failed"}
+        
+        try:
+            # Find unread conversations using more reliable selector
+            unread_selector = (
+                "li.msg-conversations-container__conversation-list-item:has(.notification-badge--show), "  # New UI
+                "li.conversation-list-item:has(.unread)"  # Old UI
+            )
+            unread_items = WebDriverWait(self.driver, 10).until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, unread_selector))
+            )
+            logger.info(f"Found {len(unread_items)} unread conversations")
+            
+            for idx, item in enumerate(unread_items[:max_replies]):
+                try:
+                    # Extract participant name with more reliable selector
+                    name_elem = item.find_element(
+                        By.CSS_SELECTOR,
+                        ".msg-conversation-listitem__participant-names, .conversation-list-item__participant-names"
+                    )
+                    name = name_elem.text.strip()
+                    
+                    logger.info(f"Processing conversation with {name} ({idx+1}/{len(unread_items)})")
+                    
+                    # Open conversation using JavaScript click for reliability
+                    self.driver.execute_script("arguments[0].click();", item)
+                    self.human_delay(2, 3)
+                    
+                    # Wait for conversation to load
+                    WebDriverWait(self.driver, 10).until(
+                        EC.any_of(
+                            EC.presence_of_element_located((By.CSS_SELECTOR, "div.msg-s-message-list-content")),
+                            EC.presence_of_element_located((By.CSS_SELECTOR, "div.msg-thread"))
+                        )
+                    )
+                    
+                    # Get message history
+                    history = self.get_conversation_history()
+                    
+                    if not history:
+                        logger.warning("No messages found, skipping")
+                        results.append({"name": name, "status": "skipped", "reason": "empty history"})
+                        self.navigate_to_messaging()
+                        continue
+                    
+                    # Check if last message is from user
+                    if history and history[-1]["sender"] == "You":
+                        logger.info("Last message was from user, skipping")
+                        results.append({"name": name, "status": "skipped", "reason": "already replied"})
+                        self.navigate_to_messaging()
+                        continue
+                    
+                    # Generate AI response
+                    ai_reply = self.generate_ai_chat_response(history)
+                    
+                    # Send response
+                    if self.send_chat_message(ai_reply):
+                        logger.info(f"✅ Replied to {name}")
+                        results.append({"name": name, "status": "replied", "message": ai_reply})
+                    else:
+                        logger.error(f"❌ Failed to reply to {name}")
+                        results.append({"name": name, "status": "failed", "reason": "send error"})
+                    
+                    # Return to inbox
+                    self.navigate_to_messaging()
+                    self.human_delay(2, 4)
+                    
+                except Exception as e:
+                    logger.error(f"Error processing conversation: {e}")
+                    results.append({"name": f"Unknown{idx}", "status": "error", "reason": str(e)})
+                    try:
+                        self.navigate_to_messaging()
+                    except:
+                        self.driver.refresh()
+            
+            return {"success": True, "results": results}
+        
+        except Exception as e:
+            logger.error(f"Inbox processing failed: {e}")
+            return {"success": False, "error": str(e)}
+
     def send_connection_request_with_note(self, message, name):
         if not self.driver:             # session lost? rebuild once, otherwise continue
             self.setup_driver()
@@ -1045,6 +1092,251 @@ Return ONLY the message text, no labels or formatting."""
 
         logger.info(f"🏁 Finished: {sent_count}/{max_invites} invitations sent ({total_attempts} total attempts)")
         return sent_count
+    
+    # --- Start of New AI Response Feature ---
+
+    def navigate_to_messaging(self):
+        """Navigates to the LinkedIn messaging page with improved reliability."""
+        logger.info("Navigating to LinkedIn messaging...")
+        try:
+            self.driver.get("https://www.linkedin.com/messaging")
+            # Wait for either new or old messaging UI
+            WebDriverWait(self.driver, 15).until(
+                EC.any_of(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "ul.msg-conversations-container__conversations-list")),  # New UI
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "div.msg-threads"))  # Old UI
+                )
+            )
+            logger.info("Successfully loaded messaging page.")
+            self.human_delay(2, 3)
+            return True
+        except TimeoutException:
+            logger.error("Failed to load messaging page in time.")
+            return False
+        except Exception as e:
+            logger.error(f"Navigation error: {e}")
+            return False
+
+    def get_conversation_history(self):
+        """Robust conversation history extraction for both UI versions."""
+        logger.info("Extracting conversation history...")
+        conversation = []
+        try:
+            # Wait for message container (supports both UI versions)
+            self.wait.until(
+                EC.any_of(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "div.msg-s-message-list-content")),  # New UI
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "div.msg-thread"))  # Old UI
+                )
+            )
+            
+            # New UI extraction
+            if self.driver.find_elements(By.CSS_SELECTOR, "div.msg-s-message-list-content"):
+                message_elements = self.driver.find_elements(By.CSS_SELECTOR, "li.msg-s-message-list__event")
+                for msg in message_elements:
+                    try:
+                        # Extract sender name
+                        try:
+                            sender = msg.find_element(By.CSS_SELECTOR, ".msg-s-message-group__name").text.strip()
+                        except:
+                            sender = "You"
+                        
+                        # Extract message text
+                        try:
+                            content = msg.find_element(By.CSS_SELECTOR, ".msg-s-event-listitem__body").text.strip()
+                        except:
+                            content = ""
+                        
+                        if content:
+                            conversation.append({"sender": sender, "message": content})
+                            
+                    except Exception as e:
+                        logger.debug(f"Skipping message: {e}")
+            
+            # Old UI extraction
+            elif self.driver.find_elements(By.CSS_SELECTOR, "div.msg-thread"):
+                message_elements = self.driver.find_elements(By.CSS_SELECTOR, "div.msg-s-event-listitem")
+                for msg in message_elements:
+                    try:
+                        # Extract sender
+                        try:
+                            sender = msg.find_element(By.CSS_SELECTOR, "span.msg-s-message-group__name").text.strip()
+                        except:
+                            if "msg-s-event-listitem__self" in msg.get_attribute("class"):
+                                sender = "You"
+                            else:
+                                sender = "Unknown"
+                        
+                        # Extract content
+                        try:
+                            content = msg.find_element(By.CSS_SELECTOR, "p").text.strip()
+                        except:
+                            content = ""
+                        
+                        if content:
+                            conversation.append({"sender": sender, "message": content})
+                            
+                    except Exception as e:
+                        logger.debug(f"Skipping message: {e}")
+            
+            logger.info(f"Extracted {len(conversation)} messages")
+            # Return messages in chronological order (oldest first)
+            return conversation
+            
+        except Exception as e:
+            logger.error(f"History extraction failed: {e}")
+            return []
+
+
+
+    def generate_ai_chat_response(self, conversation_history, user_persona="a helpful professional assistant"):
+        """
+        Generates a contextual response to a conversation using Gemini AI.
+        """
+        if not self.model:
+            logger.error("AI model is not initialized. Cannot generate response.")
+            return "Sorry, I am unable to generate a response at this time."
+
+        if not conversation_history:
+            logger.warning("Conversation history is empty. Cannot generate a contextual response.")
+            return "Could you please provide more context?"
+            
+        logger.info("Generating AI response for the chat...")
+
+        # Format the conversation history for the AI prompt
+        formatted_history = "\n".join([f"{msg['sender']}: {msg['message']}" for msg in conversation_history])
+        
+        # Get the name of the other person (the last sender who is not 'You')
+        other_person_name = "there"
+        for msg in reversed(conversation_history):
+            if msg['sender'] != 'You':
+                other_person_name = msg['sender'].split()[0] # Get first name
+                break
+
+        prompt = f"""Craft a professional LinkedIn reply based on this conversation. Guidelines:
+1. Be concise (1-2 sentences max)
+2. Match the sender's tone (formal/casual)
+3. Address unread messages specifically
+4. Never use markdown or special formatting
+5. Respond naturally to questions
+6. Sign with just your first name
+
+Recent messages:
+{formatted_history}
+
+Response:"""
+        try:
+            response = self.model.generate_content(prompt)
+            ai_message = response.text.strip()
+            # Clean up any AI-added labels
+            ai_message = re.sub(r'^(Your Response:|Response:)\s*', '', ai_message, flags=re.IGNORECASE)
+            logger.info(f"AI generated response: {ai_message}")
+            return ai_message
+        except Exception as e:
+            logger.error(f"AI response generation failed: {e}")
+            return "I appreciate you reaching out. Let me review this and get back to you shortly."
+
+    def send_chat_message(self, message):
+        """
+        Types and sends a message in the currently active chat window.
+        """
+        logger.info(f"Sending message: '{message[:50]}...'")
+        try:
+            # Wait for message box to be ready
+            message_box_selector = "div.msg-form__contenteditable[role='textbox']"
+            message_box = WebDriverWait(self.driver, 10).until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, message_box_selector))
+            )
+            
+            # Wait for any previous messages to clear
+            self.human_delay(1, 2)
+            
+            # Clear any existing text
+            self.driver.execute_script("arguments[0].innerText = '';", message_box)
+            message_box.send_keys(" ")  # Trigger any required events
+            self.human_delay(0.5, 1)
+            
+            # Type message
+            self.type_like_human(message_box, message)
+            self.human_delay(1, 2)
+            
+            # Find and click the send button
+            send_button = self.driver.find_element(
+                By.CSS_SELECTOR, 
+                "button.msg-form__send-button[type='submit'], button.msg-form-send-button"
+            )
+            
+            # Ensure button is enabled
+            if send_button.is_enabled():
+                self.safe_click(send_button)
+                logger.info("Message sent successfully.")
+                self.human_delay(2, 4)
+                return True
+            else:
+                logger.error("Send button is disabled.")
+                return False
+                
+        except TimeoutException:
+            logger.error("Message input box not found or not interactable.")
+            return False
+        except NoSuchElementException:
+            logger.error("Send button not found.")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to send message: {e}")
+            return False
+
+    def ai_respond_to_conversation(self, conversation_name):
+        """
+        Orchestrates the process of reading a conversation and sending an AI-generated reply.
+        
+        :param conversation_name: The name of the person in the conversation to open.
+        """
+        logger.info(f"Starting AI response process for conversation with {conversation_name}.")
+        
+        # 1. Navigate to messaging
+        if not self.navigate_to_messaging():
+            return
+
+        # 2. Select the specific conversation
+        try:
+            logger.info(f"Searching for conversation with '{conversation_name}'...")
+            # More robust XPath to find the conversation list item
+            conversation_xpath = f"//h3[contains(@class, 'msg-conversation-listitem__participant-names') and contains(normalize-space(), '{conversation_name}')]/ancestor::li[contains(@class, 'msg-conversation-listitem')]"
+            conversation_element = self.wait.until(
+                EC.element_to_be_clickable((By.XPATH, conversation_xpath))
+            )
+            self.safe_click(conversation_element)
+            logger.info(f"Opened conversation with {conversation_name}.")
+            self.human_delay(2, 3)
+        except TimeoutException:
+            logger.error(f"Could not find or click on conversation with '{conversation_name}'.")
+            return
+        except Exception as e:
+            logger.error(f"An error occurred while opening the conversation: {e}")
+            return
+
+        # 3. Read the conversation history
+        history = self.get_conversation_history()
+        if not history:
+            logger.warning("Could not read conversation history. Aborting.")
+            return
+            
+        # Check if the last message is from 'You'
+        if history and history[-1]['sender'] == 'You':
+            logger.info("The last message was already sent by you. No response needed.")
+            return
+
+        # 4. Generate AI response
+        ai_response = self.generate_ai_chat_response(history)
+
+        # 5. Send the response
+        if ai_response:
+            self.send_chat_message(ai_response)
+        else:
+            logger.error("AI failed to generate a response. Message not sent.")
+            
+    # --- End of New AI Response Feature ---
         
         
     def go_to_next_page(self):
@@ -1109,10 +1401,6 @@ Return ONLY the message text, no labels or formatting."""
             logger.error(f"Error clicking connect button: {e}")
             return False
             
-    #def search_and_connect_from_keywords(self, keywords, max_invites=20):
-        
-
-                
     def _extract_name_from_button(self, button):
         """Extract name from connect button context"""
         try:
