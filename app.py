@@ -839,6 +839,24 @@ def get_tasks():
         }
     ]
     return jsonify({"tasks": sample_tasks})
+    
+@app.route('/tasks', methods=['POST'])
+def tasks():
+    data = request.json or {}
+    email = data.get('email')
+    api_key = data.get('api_key')
+    # TODO: validate email/api_key against your User model
+    # For now, just return some dummy tasks or pull from your campaign_results
+    tasks = []
+    for cid, results in campaign_results.items():
+        for contact in results.get('contacts_processed', []):
+            if not contact['success']:
+                continue
+            tasks.append({
+                'profile_url': contact['linkedin_url'],
+                'message': contact['message']
+            })
+    return jsonify(tasks=tasks)
 
 
 @app.route('/logout')
