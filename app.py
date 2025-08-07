@@ -978,6 +978,46 @@ def receive_inbox_results():
         logger.error(f"❌ Error receiving inbox results: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
+# In app.py
+
+@app.route('/api/register_client_bot', methods=['POST'])
+def register_client_bot():
+    """
+    Unauthenticated endpoint for the client bot to register itself.
+    Authentication is done via a shared secret (Gemini API Key).
+    """
+    try:
+        data = request.json
+        client_url = data.get('client_url')
+        gemini_key = data.get('gemini_api_key')
+
+        if not client_url or not gemini_key:
+            return jsonify({'success': False, 'error': 'Missing client_url or gemini_api_key'}), 400
+
+        # Find the user by their unique Gemini API key
+        user = User.query.filter_by(gemini_api_key=gemini_key).first()
+
+        if not user:
+            return jsonify({'success': False, 'error': 'Invalid API key. User not found.'}), 403
+
+        # Test the provided client URL to ensure it's reachable
+        try:
+            response = requests.get(f"{client_url}/health", timeout=10)
+            if response.status_code != 200:
+                return jsonify({'success': False, 'error': 'Client is not responding or unhealthy.'}), 400
+        except requests.exceptions.RequestException as e:
+            return jsonify({'success': False, 'error': f'Cannot connect to client: {e}'}), 400
+
+        # Register the client URL for the found user
+        client_manager.register_client(user.id, client_url)
+        logger.info(f"✅ Successfully registered client bot for user {user.email} with URL: {client_url}")
+        
+        return jsonify({'success': True, 'message': 'Client registered successfully'})
+
+    except Exception as e:
+        logger.error(f"❌ Error during client bot registration: {e}")
+        return jsonify({'success': False, 'error': str(e)}), 500
+
 @app.route('/logout')
 @login_required
 def logout():
