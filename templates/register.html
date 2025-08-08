@@ -3,50 +3,38 @@
 {% block title %}Register - LinkedIn Automation{% endblock %}
 
 {% block content %}
-<div class="auth-container">
-    <div class="auth-card">
-        <div class="auth-header">
-            <i class="fab fa-linkedin"></i>
-            <h1>Create Account</h1>
-            <p>Join LinkedIn Automation Dashboard</p>
-        </div>
-
-        <form method="POST" class="auth-form">
-            <div class="form-row">
-                <div class="form-group">
-                    <label for="first_name">First Name</label>
-                    <input type="text" id="first_name" name="first_name" required placeholder="Enter your first name" value="{{ request.form.first_name or '' }}">
-                </div>
-                <div class="form-group">
-                    <label for="last_name">Last Name</label>
-                    <input type="text" id="last_name" name="last_name" required placeholder="Enter your last name" value="{{ request.form.last_name or '' }}">
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label for="email">Email Address</label>
-                <input type="email" id="email" name="email" required placeholder="Enter your email address" value="{{ request.form.email or '' }}">
-            </div>
-
-            <div class="form-group">
-                <label for="password">Password</label>
-                <input type="password" id="password" name="password" required placeholder="Create a password (min 6 characters)">
-            </div>
-
-            <div class="form-group">
-                <label for="confirm_password">Confirm Password</label>
-                <input type="password" id="confirm_password" name="confirm_password" required placeholder="Confirm your password">
-            </div>
-
-            <button type="submit" class="auth-btn">
-                <i class="fas fa-user-plus"></i>
-                Create Account
-            </button>
-        </form>
-
-        <div class="auth-footer">
-            <p>Already have an account? <a href="{{ url_for('login') }}">Login here</a></p>
-        </div>
+<div class="container" style="max-width:520px; margin:auto;">
+  <div class="card mt-5 shadow">
+    <div class="card-header text-center" style="background: linear-gradient(90deg, #0a66c2 80%, #e6f0f9); color:#fff;">
+      <h3><i class="fas fa-user-plus me-2"></i>Join the LinkedIn Automation Dashboard</h3>
     </div>
+    <div class="card-body pb-3">
+      {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+      {% endif %}
+      <form action="" method="post" autocomplete="off">
+        <div class="form-group mb-3">
+          <label for="email" class="fw-bold">Email address</label>
+          <input class="form-control" type="email" id="email" name="email" placeholder="you@email.com" required>
+        </div>
+        <div class="form-group mb-3">
+          <label for="password" class="fw-bold">Password</label>
+          <input class="form-control" type="password" id="password" name="password" placeholder="Create a password" required>
+        </div>
+        <div class="form-group mb-3">
+          <label for="gemini_api_key" class="fw-bold">Gemini API Key</label>
+          <input class="form-control" type="text" id="gemini_api_key" name="gemini_api_key" placeholder="Enter your Gemini API key" required>
+          <small class="form-text text-muted">You need this to enable AI-powered messaging. <a href="https://ai.google.dev/gemini-api/docs/api-key" target="_blank" style="color:#0a66c2;">Get one here</a>.</small>
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg w-100">
+          <i class="fas fa-user-plus me-1"></i> Register
+        </button>
+      </form>
+      <div class="text-center text-muted mt-3" style="font-size:1.01em;">
+        <span>Already have an account?</span>
+        <a href="{{ url_for('login') }}" class="fw-bold" style="color:#0a66c2;">Login here</a>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
