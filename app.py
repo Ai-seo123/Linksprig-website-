@@ -130,6 +130,22 @@ class LocalClientManager:
             logger.error(f"❌ Error sending campaign request: {e}")
             return {'success': False, 'error': str(e)}
     
+    def send_search_connect_request(self, user_id, search_params):
+        client_url = self.get_client_url(user_id)
+        user       = User.query.get(user_id)
+
+        payload = {
+            "search_id":  str(uuid.uuid4()),
+            "user_config": {
+                "linkedin_email":     user.linkedin_email,
+                "linkedin_password":  user.get_linkedin_password(),
+                "gemini_api_key":     user.gemini_api_key
+            },
+            "search_params": search_params
+        }
+        return requests.post(f"{client_url}/start_search_connect",
+                            json=payload, timeout=10).json()
+
     def send_keyword_search_request(self, user_id, search_params):
         """Send keyword search request to local client"""
         client_url = self.get_client_url(user_id)
@@ -736,8 +752,11 @@ def keyword_search():
             }
             
             # Send request to local client
-            result = client_manager.send_keyword_search_request(user.id, search_params)
-            
+            if search_type == 'search_and_connect':
+                result = client_manager.send_search_connect_request(user.id, search_params)
+            else:
+                result = client_manager.send_keyword_search_request(user.id, search_params)
+    
             if result.get('success'):
                 flash('Keyword search started on local client!', 'success')
                 session['current_search'] = {
