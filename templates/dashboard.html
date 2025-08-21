@@ -76,7 +76,7 @@
             <span class="card-button">Start Outreach <i class="fas fa-arrow-right"></i></span>
         </a>
 
-        <a href="{{ url_for('keyword') }}" class="dashboard-card {% if not user.has_linkedin_setup() %}disabled{% endif %}">
+        <a href="{{ url_for('keyword_search') }}" class="dashboard-card {% if not user.has_linkedin_setup() %}disabled{% endif %}">
             <div class="card-icon"><i class="fas fa-search"></i></div>
             <h3>Keyword Search</h3>
             <p>Find and connect with targeted profiles.</p>

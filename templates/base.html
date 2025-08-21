@@ -27,7 +27,7 @@
                 <a href="{{ url_for('outreach') }}" class="nav-link {% if request.endpoint == 'outreach' %}active{% endif %}">
                     <i class="fas fa-paper-plane fa-fw"></i> Outreach
                 </a>
-                <a href="{{ url_for('keyword') }}" class="nav-link {% if request.endpoint == 'keyword' %}active{% endif %}">
+                <a href="{{ url_for('keyword_search') }}" class="nav-link {% if request.endpoint == 'keyword_search' %}active{% endif %}">
                     <i class="fas fa-search fa-fw"></i> Search
                 </a>
                  <a href="{{ url_for('client_setup') }}" class="nav-link {% if request.endpoint == 'client_setup' %}active{% endif %}">

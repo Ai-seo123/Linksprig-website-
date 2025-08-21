@@ -1,3 +1,4 @@
+
 {% extends "base.html" %}
 {% block title %}Keyword Search - LinkedIn Automation{% endblock %}
 
@@ -119,6 +120,141 @@ document.addEventListener('DOMContentLoaded', function() {
     {% endif %}
 });
 
-// All other JS functions (checkClientStatus, startSearchMonitoring, etc.) remain here.
+function checkClientStatus() {
+    fetch('/check_client_status')
+        .then(response => response.json())
+        .then(data => {
+            const alertElement = document.getElementById('clientStatusAlert');
+            const searchBtn = document.getElementById('searchBtn');
+            
+            if (!data.available) {
+                alertElement.style.display = 'block';
+                searchBtn.disabled = true;
+                searchBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Client Not Available';
+            } else {
+                alertElement.style.display = 'none';
+                searchBtn.disabled = false;
+                searchBtn.innerHTML = '<i class="fas fa-search"></i> Start Search';
+            }
+        })
+        .catch(error => {
+            console.error('Error checking client status:', error);
+            document.getElementById('clientStatusAlert').style.display = 'block';
+        });
+}
+
+function startSearchMonitoring() {
+    if (!currentSearchId) return;
+    
+    const statusElement = document.getElementById('searchStatus');
+    const progressBar = document.getElementById('progressBar');
+    const progressBarFill = progressBar.querySelector('.progress-bar');
+    const stopBtn = document.getElementById('stopSearchBtn');
+    
+    statusElement.innerHTML = '<p class="text-primary">Search in progress...</p>';
+    progressBar.style.display = 'block';
+    stopBtn.style.display = 'block';
+    
+    // Poll for results every 3 seconds
+    statusInterval = setInterval(() => {
+        fetch(`/search_results/${currentSearchId}`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    statusElement.innerHTML = `<p class="text-danger">Error: ${data.error}</p>`;
+                    clearInterval(statusInterval);
+                    return;
+                }
+                
+                if (data.results) {
+                    const results = data.results;
+                    
+                    // Update progress
+                    if (results.total_processed && results.total_found) {
+                        const progress = Math.round((results.total_processed / results.total_found) * 100);
+                        progressBarFill.style.width = `${progress}%`;
+                        progressBarFill.textContent = `${progress}%`;
+                    }
+                    
+                    // Update status
+                    statusElement.innerHTML = `
+                        <p class="text-info">Found: ${results.total_found || 0} profiles</p>
+                        <p class="text-success">Processed: ${results.total_processed || 0}</p>
+                        <p class="text-primary">Connected: ${results.connections_sent || 0}</p>
+                    `;
+                    
+                    // Display results
+                    displaySearchResults(results);
+                    
+                    // Check if completed
+                    if (results.completed) {
+                        statusElement.innerHTML += '<p class="text-success"><strong>Search completed!</strong></p>';
+                        progressBarFill.style.width = '100%';
+                        progressBarFill.textContent = '100%';
+                        stopBtn.style.display = 'none';
+                        clearInterval(statusInterval);
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error fetching search results:', error);
+                statusElement.innerHTML = '<p class="text-danger">Error fetching results</p>';
+            });
+    }, 3000);
+}
+
+function displaySearchResults(results) {
+    const resultsContainer = document.getElementById('searchResults');
+    
+    if (!results.profiles || results.profiles.length === 0) {
+        resultsContainer.innerHTML = '<p class="text-muted">No profiles found yet...</p>';
+        return;
+    }
+    
+    let html = '<div class="search-results-list">';
+    
+    results.profiles.forEach((profile, index) => {
+        const statusClass = profile.connected ? 'success' : (profile.error ? 'danger' : 'secondary');
+        const statusText = profile.connected ? 'Connected' : (profile.error ? 'Failed' : 'Pending');
+        
+        html += `
+            <div class="search-result-item mb-3 p-3 border rounded">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="mb-1">${profile.name || 'Unknown Name'}</h6>
+                        <p class="mb-1 text-muted">${profile.title || 'No title'}</p>
+                        <p class="mb-1 small">${profile.location || 'Unknown location'}</p>
+                        ${profile.linkedin_url ? `<a href="${profile.linkedin_url}" target="_blank" class="small">View Profile</a>` : ''}
+                    </div>
+                    <span class="badge badge-${statusClass}">${statusText}</span>
+                </div>
+                ${profile.message ? `<div class="mt-2 small"><strong>Message:</strong> ${profile.message}</div>` : ''}
+                ${profile.error ? `<div class="mt-2 small text-danger"><strong>Error:</strong> ${profile.error}</div>` : ''}
+            </div>
+        `;
+    });
+    
+    html += '</div>';
+    resultsContainer.innerHTML = html;
+}
+
+// Stop search functionality
+document.getElementById('stopSearchBtn').addEventListener('click', function() {
+    if (statusInterval) {
+        clearInterval(statusInterval);
+        statusInterval = null;
+    }
+    
+    document.getElementById('searchStatus').innerHTML = '<p class="text-warning">Search stopped by user</p>';
+    this.style.display = 'none';
+});
+
+// Form submission handling
+document.getElementById('searchForm').addEventListener('submit', function(e) {
+    // Let the form submit normally - the Flask route will handle it
+    // This is just to update the UI
+    document.getElementById('searchBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
+    document.getElementById('searchBtn').disabled = true;
+});
 </script>
 {% endblock %}

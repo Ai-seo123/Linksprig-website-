@@ -605,107 +605,6 @@ def get_campaign_results(campaign_id):
 def campaign_status():
     return jsonify(automation_status)
 
-@app.route('/keyword', methods=['GET', 'POST'])
-@login_required
-@linkedin_setup_required
-def keyword():
-    user = get_current_user()
-    
-    if request.method == 'POST':
-        try:
-            search_keywords = request.form.get('keywords', '').strip()
-            location = request.form.get('location', '').strip()
-            search_type = request.form.get('search_type', 'search_only')
-            max_invites = int(request.form.get('max_invites', 10))
-
-            if not search_keywords:
-                flash('Please enter search keywords!', 'error')
-                return render_template('keyword.html', user=user)
-            
-            # Generate search ID
-            search_id = str(uuid.uuid4())
-            
-            def run_search():
-                automation_instance = None
-                try:
-                    automation_instance = LinkedInAutomation(
-                        api_key=user.gemini_api_key,
-                        email=user.linkedin_email,
-                        password=user.get_linkedin_password()
-                    )
-                    
-                    if search_type == 'search_only':
-                        # Just search for profiles
-                        results = automation_instance.search_profiles(
-                            keywords=search_keywords,
-                            location=location,
-                            max_invites=max_invites
-                        )
-                        search_results_cache[search_id] = {
-                            'type': 'search_only',
-                            'results': results,
-                            'keywords': search_keywords,
-                            'location': location,
-                            'timestamp': datetime.now().isoformat()
-                        }
-                    else:
-                        # Search and connect with enhanced functionality
-                        results = automation_instance.search_and_connect(
-                            keywords=search_keywords,
-                            max_invites=max_invites
-                        )
-                        search_results_cache[search_id] = {
-                            'type': 'search_and_connect',
-                            'results': results,
-                            'keywords': search_keywords,
-                            'location': location,
-                            'timestamp': datetime.now().isoformat()
-                        }
-                        
-                except Exception as e:
-                    logger.error(f"Search error: {e}")
-                    search_results_cache[search_id] = {
-                        'error': str(e),
-                        'timestamp': datetime.now().isoformat()
-                    }
-                finally:
-                    if automation_instance:
-                        automation_instance.close()
-            
-            # Start search in background
-            search_thread = threading.Thread(target=run_search)
-            search_thread.daemon = True
-            search_thread.start()
-            
-            # Store search info in session
-            session['current_search'] = {
-                'search_id': search_id,
-                'keywords': search_keywords,
-                'location': location,
-                'search_type': search_type,
-                'max_invites': max_invites
-            }
-            
-            flash('Search started! Results will appear shortly.', 'success')
-            return redirect(url_for('keyword'))
-            
-        except Exception as e:
-            flash(f'Search error: {str(e)}', 'error')
-            return render_template('keyword.html', user=user)
-    
-    # Check for search results
-    search_info = session.get('current_search')
-    search_results = None
-    
-    if search_info:
-        search_id = search_info['search_id']
-        search_results = search_results_cache.get(search_id)
-    
-    return render_template('keyword.html', 
-                         user=user,
-                         search_info=search_info,
-                         search_results=search_results)
-
 @app.route('/keyword_search', methods=['GET', 'POST'])
 @login_required
 @linkedin_setup_required
@@ -721,6 +620,7 @@ def keyword_search():
 
             if not search_keywords:
                 flash('Please enter search keywords!', 'error')
+                # CORRECTED LINE
                 return render_template('keyword_search.html', user=user)
             
             # Check if local client is available
@@ -754,14 +654,17 @@ def keyword_search():
             
         except Exception as e:
             flash(f'Search error: {str(e)}', 'error')
+            # CORRECTED LINE
             return render_template('keyword_search.html', user=user)
     
     # GET request - show form and any previous search results
     search_info = session.get('current_search')
-    return render_template('keyword_search.html', 
+    # CORRECTED LINE
+    return render_template('keyword_search.html',
                          user=user,
                          search_info=search_info,
                          client_available=client_manager.is_client_available(user.id))
+
 
 @app.route('/search_results/<search_id>')
 @login_required
