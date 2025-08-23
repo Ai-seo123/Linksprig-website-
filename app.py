@@ -2,7 +2,7 @@ from flask import Flask, render_template, request, redirect, url_for, session, f
 import os
 import pandas as pd
 from werkzeug.utils import secure_filename
-from models import db, User
+from models import User
 from linkedin_automation import LinkedInAutomation
 from datetime import datetime
 import re
@@ -16,6 +16,12 @@ import random
 import requests
 from urllib.parse import urlparse
 import socket
+from mongoengine import connect
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,22 +42,14 @@ campaign_controls = defaultdict(lambda: {'stop': False, 'action': None})
 app = Flask(__name__)
 app.secret_key = os.environ.get('SECRET_KEY', 'your-secret-key-here-change-this-in-production')
 
-# Fixed database configuration using absolute path
+# MongoDB Atlas connection
+MONGODB_URI = os.environ.get("MONGODB_URI", "mongodb+srv://Arnav-admin:YourActualPassword@linkedin-auto-users.qt8v57k.mongodb.net/?retryWrites=true&w=majority&appName=Linkedin-auto-users")
+connect(host=MONGODB_URI)
+
+# File upload configuration
 basedir = os.path.abspath(os.path.dirname(__file__))
-instance_path = os.path.join(basedir, 'instance')
-db_path = os.path.join(instance_path, 'users.db')
-
-# Ensure instance directory exists
-os.makedirs(instance_path, exist_ok=True)
-
-# Database configuration with absolute path
-app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{db_path}'
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 app.config['UPLOAD_FOLDER'] = os.path.join(basedir, 'uploads')
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024  # 16MB max file size
-
-# Initialize extensions
-db.init_app(app)
 
 # Ensure upload folder exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -69,7 +67,10 @@ def login_required(f):
 def get_current_user():
     """Get current logged-in user"""
     if 'user_id' in session:
-        return User.query.get(session['user_id'])
+        try:
+            return User.objects.get(id=session['user_id'])
+        except User.DoesNotExist:
+            return None
     return None
 
 def linkedin_setup_required(f):
@@ -83,9 +84,6 @@ def linkedin_setup_required(f):
     decorated_function.__name__ = f.__name__
     return decorated_function
 
-# Flask 3.x compatible initialization
-first_request = True
-
 class LocalClientManager:
     def __init__(self):
         self.default_client_url = "http://127.0.0.1:5001"
@@ -98,7 +96,7 @@ class LocalClientManager:
     
     def get_client_url(self, user_id):
         """Get client URL for a user"""
-        return self.client_urls.get(user_id, self.default_client_url)
+        return self.client_urls.get(str(user_id), self.default_client_url)
     
     def is_client_available(self, user_id):
         """Check if local client is available"""
@@ -113,7 +111,7 @@ class LocalClientManager:
         """Send campaign request to local client"""
         client_url = self.get_client_url(user_id)
         try:
-            user = User.query.get(user_id)
+            user = User.objects.get(id=user_id)
             payload = {
                 'campaign_id': campaign_data['campaign_id'],
                 'user_config': {
@@ -134,7 +132,7 @@ class LocalClientManager:
         """Send keyword search request to local client"""
         client_url = self.get_client_url(user_id)
         try:
-            user = User.query.get(user_id)
+            user = User.objects.get(id=user_id)
             payload = {
                 'search_id': str(uuid.uuid4()),
                 'user_config': {
@@ -155,7 +153,7 @@ class LocalClientManager:
         """Send inbox processing request to local client"""
         client_url = self.get_client_url(user_id)
         try:
-            user = User.query.get(user_id)
+            user = User.objects.get(id=user_id)
             payload = {
                 'process_id': str(uuid.uuid4()),
                 'user_config': {
@@ -189,12 +187,12 @@ client_manager = LocalClientManager()
 def client_setup():
     """Show client setup instructions"""
     user = get_current_user()
-    client_available = client_manager.is_client_available(user.id)
+    client_available = client_manager.is_client_available(str(user.id))
     
     return render_template('client_setup.html', 
                          user=user, 
                          client_available=client_available,
-                         client_url=client_manager.get_client_url(user.id))
+                         client_url=client_manager.get_client_url(str(user.id)))
 
 @app.route('/register_client', methods=['POST'])
 @login_required
@@ -218,7 +216,7 @@ def register_client():
             return jsonify({'success': False, 'error': f'Cannot connect to client: {e}'}), 400
         
         # Register client
-        client_manager.register_client(user.id, client_url)
+        client_manager.register_client(str(user.id), client_url)
         
         return jsonify({'success': True, 'message': 'Client registered successfully'})
         
@@ -230,18 +228,8 @@ def register_client():
 def check_client_status():
     """Check if local client is available"""
     user = get_current_user()
-    available = client_manager.is_client_available(user.id)
+    available = client_manager.is_client_available(str(user.id))
     return jsonify({'available': available})
-
-@app.before_request
-def before_first_request():
-    """Create database tables on first request"""
-    global first_request
-    if first_request:
-        with app.app_context():
-            db.create_all()
-            print(f"Database initialized at: {db_path}")
-        first_request = False
 
 @app.route('/')
 def index():
@@ -281,7 +269,7 @@ def register():
                 return render_template('register.html')
             
             # Check if user already exists
-            existing_user = User.query.filter_by(email=email).first()
+            existing_user = User.objects(email=email).first()
             if existing_user:
                 flash('An account with this email already exists!', 'error')
                 return render_template('register.html')
@@ -293,15 +281,12 @@ def register():
                 last_name=last_name
             )
             user.set_password(password)
-            
-            db.session.add(user)
-            db.session.commit()
+            user.save()
             
             flash('Registration successful! Please log in.', 'success')
             return redirect(url_for('login'))
             
         except Exception as e:
-            db.session.rollback()
             flash(f'Registration error: {str(e)}', 'error')
             return render_template('register.html')
     
@@ -321,11 +306,11 @@ def login():
                 return render_template('login.html')
             
             # Find user
-            user = User.query.filter_by(email=email).first()
+            user = User.objects(email=email).first()
             
             if user and user.check_password(password):
                 # Login successful
-                session['user_id'] = user.id
+                session['user_id'] = str(user.id)
                 session['user_email'] = user.email
                 session['user_name'] = user.get_full_name()
                 session['login_time'] = datetime.now().isoformat()
@@ -383,24 +368,21 @@ def settings():
                 flash("All fields are required.", "error")
                 return render_template('settings.html', user=user)
 
-            # Save to user model
+            # Update user settings
             user.linkedin_email = linkedin_email
-            user.linkedin_password = linkedin_password  # optional: hash this
+            user.linkedin_password = linkedin_password
             user.gemini_api_key = gemini_api_key
-
-            # ✅ Save password in memory (just for this session)
             user.set_password_plain(linkedin_password)
+            user.updated_at = datetime.utcnow()
+            user.save()
 
-            db.session.commit()
             flash("Settings updated", "success")
             return redirect(url_for('settings'))
 
         except Exception as e:
-            db.session.rollback()
             flash(f"Settings update failed: {str(e)}", "error")
 
     return render_template('settings.html', user=user)
-
 
 @app.route('/ai_handler', methods=['GET', 'POST'])
 @login_required
@@ -511,7 +493,7 @@ def start_campaign():
         if not campaign_data or campaign_data.get('campaign_id') != campaign_id:
             return jsonify({'error': 'Campaign not found in session'}), 404
 
-        if not client_manager.is_client_available(user.id):
+        if not client_manager.is_client_available(str(user.id)):
             return jsonify({
                 'error': 'Local client not available. Please start it.',
                 'redirect': url_for('client_setup')
@@ -527,7 +509,7 @@ def start_campaign():
             'priority_order': ['connection_with_note', 'connection_without_note', 'direct_message']
         })
 
-        result = client_manager.send_campaign_request(user.id, enhanced_campaign_data)
+        result = client_manager.send_campaign_request(str(user.id), enhanced_campaign_data)
         
         if result.get('success'):
             return jsonify(result)
@@ -537,8 +519,6 @@ def start_campaign():
     except Exception as e:
         logger.error(f"❌ Start campaign error: {str(e)}")
         return jsonify({'error': str(e)}), 500
-
-
 
 @app.route('/campaign_action', methods=['POST'])
 @login_required
@@ -558,7 +538,7 @@ def campaign_action():
         'message': message
     }
 
-    result = client_manager.send_campaign_action(user.id, payload)
+    result = client_manager.send_campaign_action(str(user.id), payload)
     return jsonify(result)
 
 @app.route('/stop_campaign', methods=['POST'])
@@ -570,7 +550,6 @@ def stop_campaign():
     campaign_controls[cid]['stop'] = True
     automation_status['message'] = 'Stopping campaign...'
     return jsonify({'success': True})
-
 
 @app.route('/contact_action', methods=['POST'])
 @login_required
@@ -586,10 +565,8 @@ def contact_action():
 @app.route('/campaign_results/<campaign_id>')
 @login_required
 def get_campaign_results(campaign_id):
-    # This route now gets campaign status directly from the client bot
-    # to ensure real-time data, including the 'awaiting_action' state.
     user = get_current_user()
-    client_url = client_manager.get_client_url(user.id)
+    client_url = client_manager.get_client_url(str(user.id))
     try:
         response = requests.get(f"{client_url}/campaign_status/{campaign_id}", timeout=5)
         if response.status_code == 200:
@@ -620,11 +597,10 @@ def keyword_search():
 
             if not search_keywords:
                 flash('Please enter search keywords!', 'error')
-                # CORRECTED LINE
                 return render_template('keyword_search.html', user=user)
             
             # Check if local client is available
-            if not client_manager.is_client_available(user.id):
+            if not client_manager.is_client_available(str(user.id)):
                 flash('Local client not available. Please start the local client application.', 'error')
                 return redirect(url_for('client_setup'))
             
@@ -636,7 +612,7 @@ def keyword_search():
             }
             
             # Send request to local client
-            result = client_manager.send_keyword_search_request(user.id, search_params)
+            result = client_manager.send_keyword_search_request(str(user.id), search_params)
             
             if result.get('success'):
                 flash('Keyword search started on local client!', 'success')
@@ -654,24 +630,20 @@ def keyword_search():
             
         except Exception as e:
             flash(f'Search error: {str(e)}', 'error')
-            # CORRECTED LINE
             return render_template('keyword_search.html', user=user)
     
     # GET request - show form and any previous search results
     search_info = session.get('current_search')
-    # CORRECTED LINE
     return render_template('keyword_search.html',
                          user=user,
                          search_info=search_info,
-                         client_available=client_manager.is_client_available(user.id))
-
+                         client_available=client_manager.is_client_available(str(user.id)))
 
 @app.route('/search_results/<search_id>')
 @login_required
 def get_search_results(search_id):
     results = search_results_cache.get(search_id, {})
     return jsonify(results)
-
 
 @app.route('/preview_message', methods=['POST'])
 @login_required
@@ -683,7 +655,7 @@ def preview_message():
         
         # Get current campaign status from client
         user = get_current_user()
-        client_url = client_manager.get_client_url(user.id)
+        client_url = client_manager.get_client_url(str(user.id))
         
         try:
             response = requests.get(f"{client_url}/campaign_status/{campaign_id}", timeout=5)
@@ -708,7 +680,6 @@ def preview_message():
         
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
 
 @app.route('/confirm_message_action', methods=['POST'])
 @login_required
@@ -742,7 +713,7 @@ def confirm_message_action():
             'message': message
         }
         
-        result = client_manager.send_campaign_action(user.id, payload)
+        result = client_manager.send_campaign_action(str(user.id), payload)
         return jsonify(result)
         
     except Exception as e:
@@ -757,12 +728,12 @@ def ai_inbox():
     if request.method == 'POST':
         try:
             # Check if local client is available
-            if not client_manager.is_client_available(user.id):
+            if not client_manager.is_client_available(str(user.id)):
                 flash('Local client not available. Please start the local client application.', 'error')
                 return redirect(url_for('client_setup'))
             
             # Send request to local client
-            result = client_manager.send_inbox_processing_request(user.id)
+            result = client_manager.send_inbox_processing_request(str(user.id))
             
             if result.get('success'):
                 flash('Inbox processing started on local client!', 'success')
@@ -779,7 +750,7 @@ def ai_inbox():
     # GET request - show status
     return render_template('ai_inbox.html', 
                          user=user,
-                         client_available=client_manager.is_client_available(user.id))
+                         client_available=client_manager.is_client_available(str(user.id)))
 
 @app.route('/inbox_results/<inbox_id>')
 @login_required
@@ -820,6 +791,7 @@ def tasks():
                 'message': contact['message']
             })
     return jsonify(tasks=tasks)
+
 @app.route('/api/campaign_progress', methods=['POST'])
 def receive_campaign_progress():
     """Receive campaign progress from local client"""
@@ -881,8 +853,6 @@ def receive_inbox_results():
         logger.error(f"❌ Error receiving inbox results: {e}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# In app.py
-
 @app.route('/api/register_client_bot', methods=['POST'])
 def register_client_bot():
     """
@@ -898,7 +868,7 @@ def register_client_bot():
             return jsonify({'success': False, 'error': 'Missing client_url or gemini_api_key'}), 400
 
         # Find the user by their unique Gemini API key
-        user = User.query.filter_by(gemini_api_key=gemini_key).first()
+        user = User.objects(gemini_api_key=gemini_key).first()
 
         if not user:
             return jsonify({'success': False, 'error': 'Invalid API key. User not found.'}), 403
@@ -906,7 +876,7 @@ def register_client_bot():
         # Test the provided client URL to ensure it's reachable
         try:
             logger.info(f"🧪 Testing connection to {client_url}...")
-            response = requests.get(f"{client_url}/health", timeout=30)  # Increased timeout to 30 seconds
+            response = requests.get(f"{client_url}/health", timeout=30)
             if response.status_code == 200:
                 logger.info("✅ Client connection test successful")
             else:
@@ -915,7 +885,7 @@ def register_client_bot():
             return jsonify({'success': False, 'error': f'Cannot connect to client: {e}'}), 400
 
         # Register the client URL for the found user
-        client_manager.register_client(user.id, client_url)
+        client_manager.register_client(str(user.id), client_url)
         logger.info(f"✅ Successfully registered client bot for user {user.email} with URL: {client_url}")
         
         return jsonify({'success': True, 'message': 'Client registered successfully'})
@@ -939,13 +909,11 @@ def not_found_error(error):
 
 @app.errorhandler(500)
 def internal_error(error):
-    db.session.rollback()
     return render_template('500.html'), 500
 
 if __name__ == '__main__':
     print(f"Starting Flask app...")
     print(f"Project directory: {basedir}")
-    print(f"Database path: {db_path}")
     print(f"Upload folder: {app.config['UPLOAD_FOLDER']}")
     
     app.run(debug=True, host='0.0.0.0', port=5000)

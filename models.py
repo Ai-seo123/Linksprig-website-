@@ -1,71 +1,69 @@
-from flask_sqlalchemy import SQLAlchemy
-from flask_bcrypt import Bcrypt
+from mongoengine import Document, StringField, DateTimeField
+from flask_bcrypt import generate_password_hash, check_password_hash
 from datetime import datetime
 
-db = SQLAlchemy()
-bcrypt = Bcrypt()
+class User(Document):
+    meta = {'collection': 'users'}
 
-class User(db.Model):
-    __tablename__ = 'users'
-    
-    id = db.Column(db.Integer, primary_key=True)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    password_hash = db.Column(db.String(128), nullable=False)
-    first_name = db.Column(db.String(50), nullable=False)
-    last_name = db.Column(db.String(50), nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
+    email = StringField(required=True, unique=True, max_length=120)
+    password_hash = StringField(required=True, max_length=128)
+    first_name = StringField(required=True, max_length=50)
+    last_name = StringField(required=True, max_length=50)
+    created_at = DateTimeField(default=datetime.utcnow)
+    updated_at = DateTimeField(default=datetime.utcnow)
+
     # LinkedIn Settings
-    linkedin_email = db.Column(db.String(120), nullable=True)
-    linkedin_password = db.Column(db.String(255), nullable=True)
-    gemini_api_key = db.Column(db.String(255), nullable=True)
-    
+    linkedin_email = StringField(max_length=120)
+    linkedin_password = StringField(max_length=255)
+    gemini_api_key = StringField(max_length=255)
+
+    # Temporary plain password storage for LinkedIn automation (not recommended for production)
+    _linkedin_password_plain = None
+
     def set_password(self, password):
         """Hash and set password"""
-        self.password_hash = bcrypt.generate_password_hash(password).decode('utf-8')
-    
+        self.password_hash = generate_password_hash(password).decode('utf-8')
+
     def check_password(self, password):
         """Check if password matches hash"""
-        return bcrypt.check_password_hash(self.password_hash, password)
-    
+        return check_password_hash(self.password_hash, password)
+
     def set_linkedin_credentials(self, email, password, api_key):
         """Set LinkedIn credentials and API key"""
         self.linkedin_email = email
         self.linkedin_password = password
         self.gemini_api_key = api_key
         self._linkedin_password_plain = password
-        #logger.info(f"Stored credentials for {email[:5]}***")
 
     def get_linkedin_password(self):
         """Get plain password for automation"""
-        if hasattr(self, '_linkedin_password_plain'):
+        if self._linkedin_password_plain:
             return self._linkedin_password_plain
-        return self.linkedin_password  # Return encrypted version as fallback
+        return self.linkedin_password  # Return stored version
 
     def set_password_plain(self, password):
-        """Temporarily store plain password for automation (not recommended for production)"""
+        """Temporarily store plain password for automation"""
         self._linkedin_password_plain = password
 
     def has_linkedin_setup(self):
         """Check if user has completed LinkedIn setup"""
         return bool(self.linkedin_email and self.linkedin_password and self.gemini_api_key)
-    
+
     def get_full_name(self):
         """Get user's full name"""
         return f"{self.first_name} {self.last_name}"
-    
+
     def to_dict(self):
         """Convert user to dictionary"""
         return {
-            'id': self.id,
+            'id': str(self.id),  # MongoDB ID; convert to string
             'email': self.email,
             'first_name': self.first_name,
             'last_name': self.last_name,
             'full_name': self.get_full_name(),
-            'created_at': self.created_at.isoformat(),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
             'has_linkedin_setup': self.has_linkedin_setup()
         }
-    
+
     def __repr__(self):
-        return f'<User {self.email}>'
+        return f"<User {self.email}>"
