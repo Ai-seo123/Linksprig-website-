@@ -193,90 +193,6 @@ def api_client_status():
     status = client_manager.get_client_status(str(user.id))
     return jsonify(status)
 
-# Add this route for client heartbeat/ping
-@app.route('/api/client-ping', methods=['POST'])
-def api_client_ping():
-    """Client heartbeat endpoint. Also serves real-time actions."""
-    try:
-        auth = request.headers.get('Authorization', '')
-        api_key = auth.replace('Bearer ', '').strip() if auth.startswith('Bearer ') else None
-        
-        if not api_key:
-            return jsonify({'error': 'Missing API key'}), 401
-
-        user = User.objects(gemini_api_key=api_key).first()
-        if not user:
-            return jsonify({'error': 'Invalid API key'}), 403
-
-        user_id = str(user.id)
-        
-        data = request.json or {}
-        client_id = data.get('client_id')
-        client_info = data.get('client_info', {})
-        
-        if not client_id:
-            return jsonify({'error': 'Missing client_id in request body'}), 400
-        
-        # Update client status for monitoring
-        client_manager.update_client_heartbeat(user_id, client_id, client_info)
-        
-        # KEY CHANGE: Get and clear queued real-time actions for this specific user
-        actions = client_manager.get_user_tasks(user_id)
-        if actions:
-            logger.info(f"Delivering {len(actions)} actions to client for user {user_id}")
-
-        return jsonify({
-            'success': True, 
-            'server_time': datetime.utcnow().isoformat(),
-            'actions': actions  # Return the retrieved actions
-        })
-    
-    except Exception as e:
-        logger.error(f"Client ping error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-def send_heartbeat_ping(self):
-    """Send ping to dashboard"""
-    try:
-        SERVER_BASE = self.config.get('dashboard_url')
-        if not SERVER_BASE:
-            return
-            
-        endpoint = f"{SERVER_BASE.rstrip('/')}/api/client-ping"
-        api_key = self.config.get('client_api_key') or self.config.get('gemini_api_key')
-        
-        payload = {
-            'client_id': self.config.get('client_id', str(uuid.uuid4())),
-            'status': 'active',
-            'timestamp': datetime.now().isoformat(),
-            'client_info': {
-                'platform': platform.system(),
-                'version': '1.0'
-            }
-        }
-        
-        headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
-        }
-        
-        resp = requests.post(endpoint, json=payload, headers=headers, timeout=15)
-        if resp.status_code in (200, 201):
-            logger.debug("💓 Heartbeat ping successful")
-            
-            # Process any returned actions
-            data = resp.json()
-            actions = data.get('actions', [])
-            if actions:
-                logger.info(f"📥 Received {len(actions)} actions from dashboard")
-                for action in actions:
-                    self.handle_task(action)
-                    
-        else:
-            logger.warning(f"💓 Heartbeat ping returned {resp.status_code}: {resp.text[:200]}")
-    except Exception as e:
-        logger.debug(f"💓 Heartbeat ping failed: {e}")
-        
 @app.route('/')
 def landing():
     # If user is already logged in, redirect to dashboard
@@ -703,6 +619,7 @@ def outreach():
             return render_template('outreach.html', user=user)
     
     return render_template('outreach.html', user=user)
+
 def handle_file_upload(user):
     """Handle CSV file upload"""
     if 'csv_file' not in request.files:
@@ -1433,37 +1350,246 @@ def ai_inbox():
     
     if request.method == 'POST':
         try:
+            process_id = str(uuid.uuid4())
             task=Task(
                 user=user,
                 task_type='process_inbox',
-                params={'process_id': str(uuid.uuid4())},
+                params={'process_id': process_id},
                 status='queued'
             )
             task.save()
-            flash('AI Inbox processing has been queued for the local client!', 'success')
             logger.info(f"✅ Queued 'process_inbox' task {task.id} for user {user.email}")
-            return redirect(url_for('ai_inbox'))
+            
+            # FIX: Return a JSON response instead of redirecting
+            return jsonify({
+                'success': True, 
+                'message': 'Task queued successfully!', 
+                'task_id': process_id  # Use the same ID for polling
+            })
             
         except Exception as e:
-            flash(f'Inbox processing error: {str(e)}', 'error')
-            return render_template('ai_inbox.html', user=user)
+            logger.error(f"Inbox processing error: {e}")
+            return jsonify({'success': False, 'error': str(e)}), 500
     
-    # GET request - show status
-    return render_template('ai_inbox.html', 
-                         user=user)
+    # GET request - show the page
+    # You can add logic here to find the latest running task for this user
+    # and pass its ID to the template as `current_inbox_process_id`
+    return render_template('ai_inbox.html', user=user)
+inbox_preview_states = {}
 
+# In app.py - Replace the @app.route('/api/inbox_preview/<process_id>') GET endpoint
+@app.route('/api/inbox_preview/<session_id>', methods=['GET'])
+@login_required
+def get_inbox_preview_status(session_id):
+    """
+    Frontend polls this endpoint to check if there is a preview waiting for user action.
+    """
+    preview_state = inbox_preview_states.get(session_id)
+    
+    if preview_state and preview_state.get('awaiting_confirmation'):
+        return jsonify(preview_state)
+    else:
+        # No preview is waiting for this session
+        return jsonify({'awaiting_confirmation': False})
+    
+@app.route('/api/inbox_preview/process/<process_id>', methods=['GET'])
+def get_inbox_preview_by_process(process_id):
+    """Get current inbox preview state for a process (fallback route)"""
+    # This searches through all sessions to find matching process_id
+    for session_id, preview_data in inbox_preview_states.items():
+        if preview_data.get('process_id') == process_id:
+            return get_inbox_preview_by_session(session_id)
+    
+    return jsonify({'awaiting_confirmation': False})
+
+@app.route('/api/inbox_action', methods=['POST'])
+@login_required
+def inbox_action():
+    """
+    Receives the user's decision (send/edit/skip) from the frontend
+    and queues it as a task for the client.
+    """
+    user = get_current_user()
+    data = request.json
+    
+    session_id = data.get('session_id')
+    action = data.get('action')
+    message = data.get('message')
+
+    if not session_id or not action:
+        return jsonify({'success': False, 'error': 'Missing session_id or action'}), 400
+
+    logger.info(f"User '{user.email}' took action '{action}' for inbox session '{session_id}'")
+
+    # Create a real-time task for the client, just like the campaign feature
+    task_payload = {
+        'id': f"inbox_action_{uuid.uuid4()}",
+        'type': 'inbox_action', # This type will be handled by client_logic.py
+        'params': {
+            'session_id': session_id,
+            'action': action,
+            'message': message, # Will be null for 'skip'
+        }
+    }
+    
+    # Use the existing client_manager to queue the action
+    client_manager.user_tasks[str(user.id)].append(task_payload)
+    
+    
+    if session_id in inbox_preview_states:
+        inbox_preview_states[session_id]['awaiting_confirmation'] = False
+        inbox_preview_states[session_id]['action_taken'] = action
+    
+    return jsonify({
+        'success': True,
+        'message': f"Action '{action}' was successfully queued for the client."
+    })
+
+inbox_preview_states = {}
+
+@app.route('/api/inbox_preview', methods=['POST'])
+def api_inbox_preview():
+    """
+    Receives an inbox preview from a client and stores it server-side.
+    """
+    try:
+        # Authenticate the client via API key
+        auth_header = request.headers.get('Authorization', '')
+        api_key = auth_header.replace('Bearer ', '').strip() if auth_header.startswith('Bearer ') else None
+        user = User.objects(gemini_api_key=api_key).first()
+        if not user:
+            return jsonify({'error': 'Invalid API key'}), 403
+
+        data = request.json or {}
+        session_id = data.get('session_id')
+        preview_data = data.get('preview')
+
+        if not session_id or not preview_data:
+            return jsonify({'error': 'Missing session_id or preview data'}), 400
+
+        # Store the state for the frontend to poll
+        inbox_preview_states[session_id] = {
+            'awaiting_confirmation': True,
+            'preview': preview_data,
+            'user_id': str(user.id),
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        contact_name = preview_data.get('contact', {}).get('name', 'Unknown')
+        logger.info(f"✅ Stored inbox preview for session {session_id} (Contact: {contact_name})")
+        
+        return jsonify({'success': True}), 200
+
+    except Exception as e:
+        logger.error(f"Error storing inbox preview: {e}", exc_info=True)
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/inbox_results/<process_id>', methods=['GET'])
+def get_inbox_results_by_process(process_id):
+    """Get inbox processing results"""
+    try:
+        # Return mock results for testing
+        return jsonify({
+            "success": True,
+            "process_id": process_id,
+            "auto_replied": 1,
+            "skipped": 0, 
+            "errors": 0,
+            "summary": {
+                "processed_count": 1,
+                "auto_reply_count": 1,
+                "skipped_count": 0
+            }
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route('/inbox_results/<process_id>')
+@login_required
+def get_inbox_results(process_id):
+    """Get inbox results for a specific process - FIXED VERSION"""
+    # Check both inbox_results and inbox_preview_states
+    results = inbox_results.get(process_id, {})
+    
+    # Also check if there's a preview state for this process
+    if process_id in inbox_preview_states:
+        preview_data = inbox_preview_states[process_id]
+        results.update({
+            'awaiting_confirmation': preview_data.get('awaiting_confirmation', False),
+            'current_reply_preview': preview_data.get('preview', {}),
+            'status': 'awaiting_action'
+        })
+    
+    return jsonify(results)
+
+# Update the client ping endpoint to include inbox actions
+@app.route('/api/client-ping', methods=['POST'])
+def api_client_ping():
+    """Client heartbeat endpoint with inbox action support"""
+    try:
+        auth = request.headers.get('Authorization', '')
+        api_key = auth.replace('Bearer ', '').strip() if auth.startswith('Bearer ') else None
+        
+        if not api_key:
+            return jsonify({'error': 'Missing API key'}), 401
+
+        user = User.objects(gemini_api_key=api_key).first()
+        if not user:
+            return jsonify({'error': 'Invalid API key'}), 403
+
+        user_id = str(user.id)
+        
+        data = request.json or {}
+        client_id = data.get('client_id')
+        client_info = data.get('client_info', {})
+        
+        # Check for active inbox sessions awaiting confirmation
+        active_inbox_sessions = data.get('active_inbox_sessions', [])
+        
+        # Process any inbox preview data from the client
+        for session_data in active_inbox_sessions:
+            session_id = session_data.get('session_id')
+            conversation = session_data.get('conversation')
+            
+            if session_id and conversation:
+                # Store this for the dashboard to display
+                # You might want to track process_id mapping here
+                process_id = conversation.get('process_id') or session_id
+                inbox_preview_states[session_id] = {
+                    'session_id': session_id,
+                    'process_id': process_id,
+                    'awaiting_confirmation': True,
+                    'preview': conversation,
+                    'timestamp': datetime.now().isoformat()
+                }
+        
+        if not client_id:
+            return jsonify({'error': 'Missing client_id in request body'}), 400
+        
+        # Update client status for monitoring
+        client_manager.update_client_heartbeat(user_id, client_id, client_info)
+        
+        # Get and clear queued actions for this user (including inbox actions)
+        actions = client_manager.get_user_tasks(user_id)
+        if actions:
+            logger.info(f"Delivering {len(actions)} actions to client for user {user_id}")
+
+        return jsonify({
+            'success': True, 
+            'server_time': datetime.utcnow().isoformat(),
+            'actions': actions
+        })
+    
+    except Exception as e:
+        logger.error(f"Client ping error: {e}")
+        return jsonify({'error': str(e)}), 500
+    
 @app.route('/api/campaign-progress/<campaign_id>')
 @login_required
 def get_campaign_progress(campaign_id):
     """Get campaign progress for frontend display"""
     progress = campaign_results.get(campaign_id, {})
     return jsonify(progress)
-
-@app.route('/inbox_results/<inbox_id>')
-@login_required
-def get_inbox_results(inbox_id):
-    results = inbox_results.get(inbox_id, {})
-    return jsonify(results)
     
 @app.route('/api/create-task', methods=['POST'])
 def api_create_task():

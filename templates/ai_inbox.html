@@ -2,77 +2,86 @@
 {% block title %}AI Inbox - LinkedIn Automation{% endblock %}
 
 {% block content %}
-<div class="container">
-    <div class="page-grid">
-        <div>
-            <div class="card">
-                <div class="card-header">
-                    <h4><i class="fas fa-robot"></i> AI Inbox Processing</h4>
-                </div>
-                <div class="card-body">
-
-                    <p class="text-muted">Process LinkedIn messages with AI-generated intelligent responses.</p>
-                    
-                    <div class="text-center">
-                        <form method="POST" id="inboxForm">
-                            <button type="submit" class="btn btn-primary btn-lg" id="processBtn">
-                                <i class="fas fa-play"></i> Start Inbox Processing
-                            </button>
-                        </form>
-                    </div>
-                </div>
+<div class="container mt-4">
+    <div class="card shadow-sm">
+        <div class="card-header d-flex align-items-center justify-content-between">
+            <h4 class="mb-0"><i class="fas fa-robot me-2"></i> AI Inbox Assistant</h4>
+            <span class="badge bg-primary rounded-pill">Interactive Mode</span>
+        </div>
+        <div class="card-body">
+            <div id="controls-section" class="text-center p-3">
+                <p class="text-muted">The assistant will find the next message needing a reply and generate a suggested response for your approval.</p>
+                <button class="btn btn-primary btn-lg shadow-sm" id="start-inbox-btn">
+                    <i class="fas fa-play-circle me-2"></i> Find Next Message
+                </button>
             </div>
 
-            <div id="processingStatus" class="card" style="display: none;">
-                <div class="card-header">
-                    <h5><i class="fas fa-cogs"></i> Processing Status</h5>
-                </div>
-                <div class="card-body">
-                    <div id="statusMessage" class="text-center">
-                        <i class="fas fa-spinner fa-spin fa-2x"></i>
-                        <p class="mt-2">Initializing inbox processing...</p>
+            <div id="status-section" class="mt-3" style="display: none;">
+                <div class="card bg-light shadow-sm">
+                    <div class="card-body">
+                        <div id="status-content" class="text-center"></div>
+                        <div class="row text-center mt-3">
+                            <div class="col">
+                                <div class="h4 text-success mb-0" id="replied-count">0</div>
+                                <small class="text-muted">Replied</small>
+                            </div>
+                            <div class="col">
+                                <div class="h4 text-warning mb-0" id="skipped-count">0</div>
+                                <small class="text-muted">Skipped</small>
+                            </div>
+                             <div class="col">
+                                <div class="h4 text-danger mb-0" id="failed-count">0</div>
+                                <small class="text-muted">Failed</small>
+                            </div>
+                        </div>
                     </div>
-                    <div class="progress mt-2" style="display: none;" id="progressBar">
-                        <div class="progress-bar" role="progressbar" style="width: 0%"></div>
-                    </div>
                 </div>
-            </div>
-
-            <div id="resultsSection" class="card" style="display: none;">
-                <div class="card-header">
-                    <h5><i class="fas fa-envelope-open-text"></i> Processing Results</h5>
-                </div>
-                <div class="card-body" id="resultsContent">
-                    </div>
             </div>
         </div>
+    </div>
+</div>
 
-        <div>
-            <div class="card">
-                <div class="card-header">
-                    <h5><i class="fas fa-star"></i> AI Features</h5>
-                </div>
-                <div class="card-body">
-                    <ul class="list-unstyled">
-                        <li class="mb-2"><i class="fas fa-check text-success"></i> Smart Context Analysis</li>
-                        <li class="mb-2"><i class="fas fa-check text-success"></i> Professional Tone</li>
-                        <li class="mb-2"><i class="fas fa-check text-success"></i> Personalized Responses</li>
-                        <li class="mb-2"><i class="fas fa-check text-success"></i> Safe, Manual Approval</li>
-                    </ul>
+<div class="modal fade" id="messagePreviewModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-xl modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title"><i class="fas fa-eye me-2"></i> Reply Preview & Action</h5>
+            </div>
+            <div class="modal-body">
+                <div class="row">
+                    <div class="col-md-5">
+                        <div class="card mb-3">
+                            <div class="card-header fw-bold">Contact Information</div>
+                            <div class="card-body">
+                                <p class="mb-1"><strong>Name:</strong> <span id="preview-name"></span></p>
+                                <p class="mb-1"><strong>Headline:</strong> <span id="preview-role"></span></p>
+                                <p class="mb-0"><strong>Profile:</strong> <a href="#" id="preview-linkedin" target="_blank" class="text-primary"><i class="fab fa-linkedin"></i> View Profile</a></p>
+                            </div>
+                        </div>
+                        <div class="card">
+                            <div class="card-header fw-bold">Recent Conversation History</div>
+                            <div class="card-body" style="max-height: 300px; overflow-y: auto;">
+                                <ul class="list-group list-group-flush" id="preview-history"></ul>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-7">
+                        <div class="card">
+                            <div class="card-header fw-bold d-flex justify-content-between align-items-center">
+                                <span>Suggested Reply (Editable)</span>
+                                <span class="badge bg-info" id="preview-intent"></span>
+                            </div>
+                            <div class="card-body">
+                                <textarea class="form-control" id="preview-message" rows="12"></textarea>
+                                <small class="form-text text-muted mt-1 float-end"><span id="message-length">0</span> / 300 characters</small>
+                            </div>
+                        </div>
+                    </div>
                 </div>
             </div>
-
-            <div class="card">
-                <div class="card-header">
-                    <h5 class="text-warning"><i class="fas fa-shield-alt"></i> Safety Notice</h5>
-                </div>
-                <div class="card-body">
-                     <ul class="list-unstyled">
-                        <li><i class="fas fa-exclamation-triangle text-warning"></i> Always review AI responses.</li>
-                        <li><i class="fas fa-exclamation-triangle text-warning"></i> Monitor for accuracy and tone.</li>
-                        <li><i class="fas fa-exclamation-triangle text-warning"></i> Use with trusted contacts first.</li>
-                    </ul>
-                </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="confirm-skip"><i class="fas fa-forward me-2"></i>Skip Reply</button>
+                <button type="button" class="btn btn-success" id="confirm-send"><i class="fas fa-paper-plane me-2"></i>Approve & Send</button>
             </div>
         </div>
     </div>
@@ -82,73 +91,197 @@
 {% block scripts %}
 <script>
 let currentProcessId = null;
-let statusInterval = null;
+let pollInterval = null;
+const POLLING_INTERVAL_MS = 3000; // Poll every 3 seconds
 
-// Check client status on page load
-document.addEventListener('DOMContentLoaded', function() {
-    {% if current_inbox_process %}
-    currentProcessId = "{{ current_inbox_process }}";
-    document.getElementById('processingStatus').style.display = 'block';
-    startStatusMonitoring();
-    {% endif %}
-});
+const startBtn = document.getElementById('start-inbox-btn');
+const statusSection = document.getElementById('status-section');
+const statusContent = document.getElementById('status-content');
+const previewModal = new bootstrap.Modal(document.getElementById('messagePreviewModal'));
 
-function startStatusMonitoring() {
-    if (!currentProcessId) return;
-
-    statusInterval = setInterval(() => {
-        fetch(`/inbox_results/${currentProcessId}`)
-            .then(response => response.json())
-            .then(data => {
-                updateProcessingStatus(data);
-            })
-            .catch(error => {
-                console.error('Error fetching inbox results:', error);
-            });
-    }, 3000);
+function setStatus(html, showSpinner = true) {
+    statusSection.style.display = 'block';
+    const spinner = showSpinner ? '<div class="spinner-border spinner-border-sm text-primary me-2" role="status"></div>' : '';
+    statusContent.innerHTML = `${spinner}<span class="align-middle">${html}</span>`;
 }
 
-function updateProcessingStatus(data) {
-    const statusDiv = document.getElementById('statusMessage');
-    const progressBar = document.getElementById('progressBar');
+function updateCounts(data) {
+    document.getElementById('replied-count').textContent = data.auto_replied || 0;
+    document.getElementById('skipped-count').textContent = data.skipped || 0;
+    document.getElementById('failed-count').textContent = data.errors || 0;
+}
+
+function showReplyPreview(data) {
+    // --- FIX START ---
+    // The actual preview data is nested inside the 'preview' key from the server
+    const preview = data.preview || {}; 
+    const contact = preview.contact || {};
+    const history = preview.conversation_history || [];
+    // --- FIX END ---
+
+    // Populate contact info
+    document.getElementById('preview-name').textContent = contact.name || 'N/A';
+    document.getElementById('preview-role').textContent = contact.title || 'N/A';
+    const profileLink = document.getElementById('preview-linkedin');
+    if (contact.linkedin_url) {
+        profileLink.href = contact.linkedin_url;
+        profileLink.style.display = 'inline-block';
+    } else {
+        profileLink.style.display = 'none';
+    }
+
+    // **CRITICAL FIX**: Populate the textarea with the correct key 'generated_message'
+    const messageTextarea = document.getElementById('preview-message');
+    messageTextarea.value = preview.generated_message || 'AI could not generate a response. Please write one manually.';
     
-    if (data.error) {
-        statusDiv.innerHTML = `<i class="fas fa-times-circle text-danger fa-2x"></i><p class="mt-2 text-danger">Processing Failed: ${data.error}</p>`;
-        clearInterval(statusInterval);
+    const updateCharCount = () => {
+        const len = messageTextarea.value.length;
+        document.getElementById('message-length').textContent = len;
+        document.getElementById('message-length').classList.toggle('text-danger', len > 300);
+    };
+    messageTextarea.oninput = updateCharCount;
+    updateCharCount();
+
+    // Populate intent badge - Note: The client doesn't send this yet, but the logic is ready
+    const intentBadge = document.getElementById('preview-intent');
+    if (preview.intent) {
+        intentBadge.textContent = preview.intent.replace(/_/g, ' ').toUpperCase();
+        intentBadge.style.display = 'inline-block';
+    } else {
+        intentBadge.style.display = 'none';
+    }
+    
+    // Populate conversation history
+    const historyList = document.getElementById('preview-history');
+    historyList.innerHTML = '';
+    
+    if (history && history.length > 0) {
+        history.slice(-5).forEach(msg => { // Show last 5 messages
+            const isYou = msg.sender && (msg.sender.toLowerCase() === 'you' || msg.sender.toLowerCase().includes('arnav'));
+            const item = document.createElement('li');
+            item.className = `list-group-item d-flex flex-column ${isYou ? 'align-items-end' : 'align-items-start'}`;
+            item.innerHTML = `
+                <small class="fw-bold ${isYou ? 'text-primary' : ''}">${isYou ? 'You' : (msg.sender || 'Them')}</small>
+                <p class="mb-0 p-2 rounded ${isYou ? 'bg-primary bg-opacity-10' : 'bg-light'}" style="max-width: 90%; word-break: break-word;">${msg.message || ''}</p>
+            `;
+            historyList.appendChild(item);
+        });
+    } else {
+        historyList.innerHTML = '<li class="list-group-item text-muted">No conversation history available.</li>';
+    }
+
+    previewModal.show();
+}
+
+function sendInboxAction(action) {
+    const message = document.getElementById('preview-message').value;
+    
+    if (action !== 'skip' && !message.trim()) {
+        alert('Message cannot be empty.');
+        return;
+    }
+    if (action !== 'skip' && message.length > 300) {
+        alert('Message is too long. Please keep it under 300 characters.');
         return;
     }
 
-    if (data.status === 'completed') {
-        statusDiv.innerHTML = `<i class="fas fa-check-circle text-success fa-2x"></i><p class="mt-2 text-success">Inbox processing completed!</p>`;
-        displayResults(data);
-        clearInterval(statusInterval);
-    } else if (data.status === 'processing') {
-        statusDiv.innerHTML = `<i class="fas fa-cogs fa-spin fa-2x"></i><p class="mt-2">Processing inbox messages...</p>`;
-        if (data.progress) {
-            progressBar.style.display = 'block';
-            const percentage = Math.round((data.progress.processed / data.progress.total) * 100);
-            progressBar.querySelector('.progress-bar').style.width = percentage + '%';
-            progressBar.querySelector('.progress-bar').textContent = `${data.progress.processed}/${data.progress.total}`;
+    const payload = {
+        session_id: currentProcessId,
+        action: action,
+        message: action === 'skip' ? null : message
+    };
+
+    fetch('/api/inbox_action', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.success) {
+            previewModal.hide();
+            setStatus('Action confirmed. Searching for the next message...');
+            // Restart polling for the next preview
+            pollForAction(); 
+        } else {
+            alert('Error processing action: ' + (data.error || 'Unknown error.'));
         }
-    } else {
-        statusDiv.innerHTML = `<i class="fas fa-spinner fa-spin fa-2x"></i><p class="mt-2">Initializing...</p>`;
-    }
+    })
+    .catch(err => {
+        console.error("Action error:", err);
+        alert('Failed to send action to the server.');
+    });
 }
 
-function displayResults(data) {
-    const resultsContent = document.getElementById('resultsContent');
-    const resultsSection = document.getElementById('resultsSection');
+// **FIXED POLLING FUNCTION**
+function pollForAction() {
+    if (!currentProcessId) return;
+
+    // Clear any previous interval to avoid multiple polling loops
+    if (pollInterval) clearInterval(pollInterval);
     
-    if (!data.messages || data.messages.length === 0) {
-        resultsContent.innerHTML = `<div class="text-center text-muted"><i class="fas fa-inbox fa-2x mb-2"></i><p>No new messages found to process.</p></div>`;
-    } else {
-        let html = `...`; // Original result rendering logic here
-        resultsContent.innerHTML = html;
-    }
+    setStatus('Client is searching for a message that needs a reply...');
     
-    resultsSection.style.display = 'block';
+    pollInterval = setInterval(() => {
+        fetch(`/api/inbox_preview/${currentProcessId}`)
+            .then(res => {
+                if (!res.ok) throw new Error(`Server returned ${res.status}`);
+                return res.json();
+            })
+            .then(data => {
+                console.log("Polling for preview...", data);
+                // **SIMPLIFIED LOGIC**: Check if the server is awaiting confirmation
+                if (data.awaiting_confirmation === true) {
+                    clearInterval(pollInterval); // Stop polling
+                    pollInterval = null;
+                    setStatus('Action required. Please review the suggested reply.', false);
+                    // The server sends the exact data structure we need, so we pass it directly
+                    showReplyPreview(data);
+                }
+                // Otherwise, do nothing and let the next poll run
+            })
+            .catch(err => {
+                console.error("Polling error:", err);
+                // We don't stop the interval on error, as the connection might be temporary
+            });
+    }, POLLING_INTERVAL_MS);
 }
 
-// Other functions like showAlert, form submission, etc. remain here.
+// Start button event listener
+startBtn.addEventListener('click', () => {
+    startBtn.disabled = true;
+    startBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Starting Task...';
+    
+    fetch("{{ url_for('ai_inbox') }}", { method: 'POST' })
+        .then(res => {
+            if (!res.ok) throw new Error(`Server error: ${res.statusText}`);
+            return res.json();
+        })
+        .then(data => {
+            if (data.success && data.task_id) {
+                currentProcessId = data.task_id;
+                pollForAction(); // Start polling for a preview
+            } else {
+                setStatus(`<strong class="text-danger">Error:</strong> ${data.error || 'Could not start task.'}`, false);
+                startBtn.disabled = false;
+                startBtn.innerHTML = '<i class="fas fa-play-circle me-2"></i> Try Again';
+            }
+        })
+        .catch(err => {
+            console.error("Start task error:", err);
+            setStatus(`<strong class="text-danger">Error:</strong> Failed to start the task. Please check the client connection.`, false);
+            startBtn.disabled = false;
+            startBtn.innerHTML = '<i class="fas fa-play-circle me-2"></i> Try Again';
+        });
+});
+
+// Modal button event listeners
+document.getElementById('confirm-send').addEventListener('click', () => sendInboxAction('send'));
+document.getElementById('confirm-skip').addEventListener('click', () => sendInboxAction('skip'));
+
+// Clean up polling when the user navigates away
+window.addEventListener('beforeunload', () => {
+    if (pollInterval) clearInterval(pollInterval);
+});
 </script>
 {% endblock %}
