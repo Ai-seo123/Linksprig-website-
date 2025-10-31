@@ -329,13 +329,74 @@ def login():
 def dashboard():
     user = get_current_user()
     
-    # Get user statistics (placeholder data)
-    stats = {
-        'active_campaigns': 0,
-        'messages_sent': 0,
-        'connections_made': 0,
-        'total_contacts': 0
-    }
+    # --- NEW: Query for real statistics ---
+    try:
+        # 1. Active Campaigns (Outreach campaigns that are running or queued)
+        active_campaigns_count = Task.objects(
+            user=user,
+            task_type='outreach_campaign',
+            status__in=['queued', 'processing']
+        ).count()
+        
+        # Get all completed tasks to aggregate results
+        completed_search_tasks = Task.objects(
+            user=user, 
+            task_type='keyword_search', 
+            status='completed'
+        )
+        
+        completed_outreach_tasks = Task.objects(
+            user=user, 
+            task_type='outreach_campaign', 
+            status='completed'
+        )
+        
+        completed_inbox_tasks = Task.objects(
+            user=user, 
+            task_type='process_inbox', 
+            status='completed'
+        )
+
+        # 2. Connections Sent (from Keyword Search + Outreach Campaigns)
+        total_search_invites = sum(
+            task.result.get('invites_sent', 0) 
+            for task in completed_search_tasks if task.result
+        )
+        total_outreach_success = sum(
+            task.result.get('successful', 0) 
+            for task in completed_outreach_tasks if task.result
+        )
+        total_connections = total_search_invites + total_outreach_success
+
+        # 3. AI Messages Sent (from AI Inbox auto-replies)
+        total_ai_messages = sum(
+            task.result.get('auto_replied', 0) 
+            for task in completed_inbox_tasks if task.result
+        )
+
+        # 4. Total Contacts Processed (from Outreach Campaigns)
+        total_contacts_processed = sum(
+            task.result.get('progress', 0) # 'progress' tracks all attempts (success, fail, skip)
+            for task in completed_outreach_tasks if task.result
+        )
+
+        stats = {
+            'active_campaigns': active_campaigns_count,
+            'messages_sent': total_ai_messages,
+            'connections_made': total_connections,
+            'total_contacts': total_contacts_processed
+        }
+    
+    except Exception as e:
+        logger.error(f"Error calculating dashboard stats for user {user.id}: {e}")
+        # Fallback to zeros if DB query fails
+        stats = {
+            'active_campaigns': 0,
+            'messages_sent': 0,
+            'connections_made': 0,
+            'total_contacts': 0
+        }
+    # --- END of new logic ---
     
     return render_template('dashboard.html', 
                          user=user,
@@ -1179,13 +1240,17 @@ def api_get_tasks():
     
     return jsonify({'tasks': tasks})
 
+# Replace existing /api/report-task handler with this:
 @application.route('/api/report-task', methods=['POST'])
 def api_report_task():
-    """Client reports generated message/progress back to dashboard"""
+    """Client reports generated message/progress back to dashboard.
+    Backwards-compatible: still supports realtime 'preview' reports used for awaiting_confirmation,
+    but also detects final task results (task_id + type + success + payload/result) and persists them.
+    """
     try:
         auth = request.headers.get('Authorization', '')
         api_key = None
-        if auth.startswith('Bearer '):
+        if auth and auth.startswith('Bearer '):
             api_key = auth.replace('Bearer ', '').strip()
 
         if not api_key:
@@ -1196,11 +1261,78 @@ def api_report_task():
             return jsonify({'error': 'Invalid API key'}), 403
 
         data = request.json or {}
-        task_id = data.get('task_id', str(uuid.uuid4()))
+
+        # Normalize possible result fields from different client versions
+        task_id = data.get('task_id') or data.get('taskId') or data.get('id') or data.get('task') or str(uuid.uuid4())
+        task_type = data.get('type') or data.get('task_type') or data.get('t')
+        success_flag = data.get('success', None)  # may be None for preview messages
+        payload = data.get('payload') or data.get('result') or data.get('results') or {}
+
+        # Heuristic: treat this as a full task-result if it contains a type OR success flag OR a payload with summary keys
+        is_task_result = (
+            task_type
+            or (success_flag is not None)
+            or any(k in payload for k in ('invites_sent', 'processed_count', 'auto_replied', 'progress', 'successful'))
+        )
+
+        if is_task_result:
+            # Try to update Task in DB (task_id is expected to be the stringified Task.id)
+            try:
+                task_obj = Task.objects.get(id=task_id)
+            except Exception:
+                task_obj = None
+
+            # Normalize what we store as the "result" document
+            result_obj = payload if isinstance(payload, dict) else (data.get('result') or data.get('payload') or {})
+
+            # Patch to ensure small keys exist (backwards compatibility)
+            # When client sends "payload" with nested fields we accept that as the canonical result
+            if task_obj:
+                task_obj.status = 'completed' if success_flag or result_obj.get('success') else 'failed'
+                # store result under task_obj.result
+                try:
+                    task_obj.result = result_obj
+                except Exception:
+                    # fallback: stringify if mongodb refuses a complex object
+                    task_obj.result = json.loads(json.dumps(result_obj, default=str))
+                task_obj.error = data.get('error') or data.get('exception') or None
+                task_obj.completed_at = datetime.utcnow()
+                task_obj.save()
+                logger.info(f"✅ Persisted task result for task {task_id} (type={task_obj.task_type})")
+            else:
+                # No Task found; store into appropriate in-memory cache so dashboard aggregation can still read it
+                if (task_type == 'keyword_search') or ('invites_sent' in result_obj):
+                    sid = data.get('search_id') or data.get('task_id') or task_id
+                    search_results_cache[sid] = {
+                        'type': 'client_search',
+                        'results': result_obj,
+                        'timestamp': datetime.now().isoformat()
+                    }
+                    logger.info(f"⚠️ Task not found; saved search result to cache for {sid}")
+                elif (task_type in ('process_inbox', 'process_inbox')) or ('auto_replied' in result_obj):
+                    pid = data.get('process_id') or task_id
+                    inbox_results[pid] = result_obj
+                    logger.info(f"⚠️ Task not found; saved inbox result to inbox_results cache for {pid}")
+                elif (task_type in ('outreach_campaign',)) or ('progress' in result_obj):
+                    cid = data.get('task_id') or data.get('campaign_id') or task_id
+                    campaign_results[cid] = result_obj
+                    logger.info(f"⚠️ Task not found; saved outreach result to campaign_results cache for {cid}")
+                else:
+                    # Generic fallback: put under search_results_cache using task_id
+                    search_results_cache[task_id] = {'type': 'unknown', 'results': result_obj, 'timestamp': datetime.now().isoformat()}
+                    logger.info(f"⚠️ Task not found; saved generic result to search_results_cache for {task_id}")
+
+            return jsonify({'success': True, 'stored': True}), 200
+
+        # ------------------------------------------------------
+        # Backwards-compatible preview-mode: small "preview" reports
+        # used for real-time edit/skip/send UI (no DB persistence)
+        # ------------------------------------------------------
+        # If not a full task result, treat as the old preview message
         message = data.get('message', '')
         contact = data.get('contact', {})
 
-        # Update automation status so UI can display edit/skip/send
+        # Update automation_status so UI can display edit/skip/send
         automation_status['awaiting'] = True
         automation_status['message'] = message
         automation_status['current'] = {
@@ -1210,12 +1342,11 @@ def api_report_task():
             'timestamp': datetime.utcnow().isoformat()
         }
 
-        logger.info(f"✅ Stored task report from client for {contact.get('name')}")
-
-        return jsonify({'success': True, 'task_id': task_id})
+        logger.info(f"✅ Stored short preview task report from client for {contact.get('name', '<unknown>')}")
+        return jsonify({'success': True, 'preview': True, 'task_id': task_id}), 200
 
     except Exception as e:
-        logger.error(f"api_report_task error: {e}")
+        logger.error(f"api_report_task error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 # Add to app.py

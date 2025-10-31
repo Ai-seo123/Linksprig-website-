@@ -1,7 +1,49 @@
 {% extends "base.html" %}
-{% block title %}Client Setup - LinkedIn Automation{% endblock %}
+{% block title %}Client Setup - LinkSprig{% endblock %}
 
 {% block content %}
+<style>
+    /* Helper class for the copy button */
+    .copy-api-key {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.75rem 1rem;
+        background-color: var(--color-background);
+        border: 1px solid var(--color-border);
+        border-radius: var(--border-radius);
+        font-family: monospace;
+        font-size: 1rem;
+        color: var(--color-text-secondary);
+    }
+    .api-key-text {
+        flex-grow: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+    }
+    .status-badge {
+        font-size: 0.9rem;
+        font-weight: 600;
+        padding: 0.25em 0.6em;
+        border-radius: 0.25rem;
+    }
+    .status-badge-success {
+        color: var(--color-success);
+        background-color: #e6f6e9;
+    }
+    .status-badge-danger {
+        color: var(--color-danger);
+        background-color: #fdecea;
+    }
+    html.dark .status-badge-success {
+        background-color: #1a3c22;
+    }
+    html.dark .status-badge-danger {
+        background-color: #392224;
+    }
+</style>
+
 <div class="container">
     <div class="card">
         <div class="card-header">
@@ -10,65 +52,63 @@
         <div class="card-body">
             <div class="alert alert-info">
                 <h5><i class="fas fa-info-circle"></i> Why do I need a local client?</h5>
-                <p>LinkedIn automation requires a browser to run tasks, which cannot be done on a standard cloud server. The local client runs on your computer and communicates securely with this dashboard to perform actions on your behalf.</p>
+                <p>LinkedIn automation runs in a real browser to keep your account safe. The local client runs on your computer, connects securely to this dashboard, and polls for new tasks (like sending messages or connection requests) to execute on your behalf.</p>
             </div>
 
             <div class="page-grid mb-4">
                 <div class="card">
+                    <div class="card-header">
+                        <h5><i class="fas fa-satellite-dish"></i> Client Status</h5>
+                    </div>
                     <div class="card-body text-center">
-                        <h5>Client Status</h5>
-                        {% if client_available %}
-                            <i class="fas fa-check-circle text-success fa-3x mb-2"></i>
-                            <p class="text-success" style="font-weight: 600;">Connected</p>
-                            <small class="text-muted">{{ client_url }}</small>
-                        {% else %}
-                            <i class="fas fa-times-circle text-danger fa-3x mb-2"></i>
-                            <p class="text-danger" style="font-weight: 600;">Not Connected</p>
-                            <small class="text-muted">Client not detected</small>
-                        {% endif %}
+                        <div id="client-status-icon" class="fa-3x mb-2">
+                            <i class="fas fa-circle-notch fa-spin text-muted"></i>
+                        </div>
+                        <p id="client-status-text" style="font-weight: 600;" class="mb-1">Checking...</p>
+                        <small id="client-status-last-seen" class="text-muted">Waiting for first check</small>
                     </div>
                 </div>
-                <div>
-                    <button type="button" class="btn btn-primary btn-block" onclick="checkClientStatus()">
-                        <i class="fas fa-sync-alt"></i> Check Status
-                    </button>
-                    <button type="button" class="btn btn-secondary btn-block mt-2" onclick="registerCustomClient()">
-                        <i class="fas fa-cog"></i> Register Custom URL
-                    </button>
-                </div>
-            </div>
 
-            <div class="page-grid">
                 <div class="card">
                     <div class="card-header">
                         <h5><i class="fas fa-download"></i> Step 1: Download Client</h5>
                     </div>
-                    <div class="card-body">
-                        <p>Download the client for your operating system:</p>
-                        <button class="btn btn-secondary btn-block mb-2" onclick="downloadClient('windows')">
-                            <i class="fab fa-windows"></i> Windows
+                    <div class="card-body text-center">
+                        <p>Download the local client for your computer. (Only Windows is currently supported).</p>
+                        <button class="btn btn-primary btn-lg btn-block mb-2" onclick="downloadClient()">
+                            <i class="fab fa-windows me-2"></i> Download for Windows
                         </button>
-                        <button class="btn btn-secondary btn-block mb-2" onclick="downloadClient('mac')">
-                            <i class="fab fa-apple"></i> macOS
-                        </button>
-                        <button class="btn btn-secondary btn-block" onclick="downloadClient('linux')">
-                            <i class="fab fa-linux"></i> Linux
-                        </button>
+                        <small class="text-muted">macOS & Linux coming soon</small>
                     </div>
                 </div>
+            </div>
 
-                <div class="card">
-                    <div class="card-header">
-                        <h5><i class="fas fa-cogs"></i> Step 2: Setup Instructions</h5>
-                    </div>
-                    <div class="card-body">
-                        <ol style="padding-left: 1.5rem;">
-                            <li><strong>Download & Extract:</strong> Download and extract the client to a folder.</li>
-                            <li><strong>Run Client:</strong> Execute the client program for your OS.</li>
-                            <li><strong>Configure:</strong> Enter your LinkedIn credentials and API key.</li>
-                            <li><strong>Dashboard URL:</strong> Ensure the URL is set to: <code>{{ request.url_root }}</code></li>
-                            <li><strong>Start Client:</strong> Click "Save & Start".</li>
-                        </ol>
+            <div class="card">
+                <div class="card-header">
+                    <h5><i class="fas fa-cogs"></i> Step 2: Setup Instructions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="page-grid">
+                        <div>
+                            <ol style="padding-left: 1.5rem; line-height: 2;">
+                                <li><strong>Download & Install:</strong> Run the installer you just downloaded.</li>
+                                <li><strong>Run Client:</strong> Open the LinkSprig client application.</li>
+                                <li><strong>Enter Credentials:</strong> In the client's settings, enter your LinkedIn Email & Password.</li>
+                                <li><strong>Enter API Key:</strong> Copy your unique API key from the box on the right and paste it into the client.</li>
+                                <li><strong>Start Client:</strong> Click "Save & Start" in the client.</li>
+                                <li><strong>Check Status:</strong> Come back here. The status above should change to <span class="status-badge status-badge-success">Connected</span>.</li>
+                            </ol>
+                        </div>
+                        <div>
+                            <h6>Your Unique API Key</h6>
+                            <p class="text-muted"><small>This key securely links your local client to your account. Keep it private.</small></p>
+                            <div class="copy-api-key">
+                                <span class="api-key-text" id="api-key-display">{{ api_key or 'API_KEY_NOT_FOUND' }}</span>
+                                <button class="btn btn-secondary btn-sm" onclick="copyToClipboard('#api-key-display')">
+                                    <i class="fas fa-copy"></i>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -76,100 +116,12 @@
         </div>
     </div>
 </div>
-
-<div class="modal fade" id="customClientModal" tabindex="-1">
-    <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Register Custom Client URL</h5>
-                <button type="button" class="close" data-dismiss="modal">
-                    <span>&times;</span>
-                </button>
-            </div>
-            <div class="modal-body">
-                <form id="customClientForm" onsubmit="event.preventDefault(); submitCustomClient();">
-                    <div class="form-group">
-                        <label for="customClientUrl">Client URL:</label>
-                        <input type="url" class="form-control" id="customClientUrl" 
-                               placeholder="https://your-ngrok-url.ngrok.io" required>
-                        <small class="form-text">
-                            Enter the URL provided by your local client (e.g., an ngrok URL).
-                        </small>
-                    </div>
-                </form>
-            </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-primary" onclick="submitCustomClient()">Register</button>
-            </div>
-        </div>
-    </div>
-</div>
-
 {% endblock %}
 
 {% block scripts %}
 <script>
-// NOTE: Bootstrap JS is included in base.html to handle modal functionality.
-function checkClientStatus() {
-    fetch('/check_client_status')
-        .then(response => response.json())
-        .then(data => {
-            if (data.available) {
-                showAlert('success', 'Client is connected and ready!');
-                setTimeout(() => location.reload(), 1500);
-            } else {
-                showAlert('danger', 'Client is not available. Please start your local client and check the URL.');
-            }
-        })
-        .catch(error => {
-            showAlert('danger', 'Error checking client status: ' + error.message);
-        });
-}
-
-function registerCustomClient() {
-    $('#customClientModal').modal('show');
-}
-
-function submitCustomClient() {
-    const url = document.getElementById('customClientUrl').value;
-    if (!url) {
-        showAlert('danger', 'Please enter a valid URL');
-        return;
-    }
-
-    fetch('/register_client', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ client_url: url })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            showAlert('success', 'Client registered successfully! Reloading...');
-            $('#customClientModal').modal('hide');
-            setTimeout(() => location.reload(), 1500);
-        } else {
-            showAlert('danger', 'Registration failed: ' + data.error);
-        }
-    })
-    .catch(error => {
-        showAlert('danger', 'Error registering client: ' + error.message);
-    });
-}
-
-function downloadClient(os) {
-    const downloads = {
-        'windows': '#', 'mac': '#', 'linux': '#' // Replace with actual URLs
-    };
-    if (downloads[os] === '#') {
-        showAlert('info', `${os.charAt(0).toUpperCase() + os.slice(1)} client download is not yet available.`);
-    } else {
-        window.open(downloads[os], '_blank');
-    }
-}
-
 function showAlert(type, message) {
+    // (This function is from your file, left unchanged)
     const category = (type === 'danger') ? 'error' : type;
     const icon = {
         'success': 'check-circle',
@@ -185,12 +137,101 @@ function showAlert(type, message) {
         <button class="flash-close" onclick="this.parentElement.remove()">&times;</button>`;
     
     const container = document.querySelector('.flash-messages');
-    container.appendChild(alertDiv);
+    if (container) {
+        container.appendChild(alertDiv);
+    } else {
+        document.body.appendChild(alertDiv);
+    }
     
     setTimeout(() => {
         $(alertDiv).fadeOut('slow', () => $(alertDiv).remove());
     }, 5000);
 }
 
+function copyToClipboard(elementId) {
+    const textToCopy = document.querySelector(elementId).innerText;
+    navigator.clipboard.writeText(textToCopy).then(() => {
+        showAlert('success', 'API Key copied to clipboard!');
+    }, (err) => {
+        showAlert('danger', 'Failed to copy text.');
+    });
+}
+
+function downloadClient() {
+    const windowsUrl = '#'; // <-- REPLACE '#' WITH YOUR ACTUAL DOWNLOAD URL
+    
+    if (windowsUrl === '#') {
+        showAlert('info', 'Windows client download is not yet available. Please check back soon.');
+    } else {
+        window.open(windowsUrl, '_blank');
+    }
+}
+
+function formatTimeAgo(isoString) {
+    if (!isoString) return 'never';
+    
+    const date = new Date(isoString);
+    const seconds = Math.floor((new Date() - date) / 1000);
+    
+    let interval = seconds / 31536000;
+    if (interval > 1) return Math.floor(interval) + " years ago";
+    interval = seconds / 2592000;
+    if (interval > 1) return Math.floor(interval) + " months ago";
+    interval = seconds / 86400;
+    if (interval > 1) return Math.floor(interval) + " days ago";
+    interval = seconds / 3600;
+    if (interval > 1) return Math.floor(interval) + " hours ago";
+    interval = seconds / 60;
+    if (interval > 1) return Math.floor(interval) + " minutes ago";
+    
+    if (seconds < 10) return "just now";
+    return Math.floor(seconds) + " seconds ago";
+}
+
+function checkClientStatus() {
+    const iconEl = document.getElementById('client-status-icon');
+    const textEl = document.getElementById('client-status-text');
+    const lastSeenEl = document.getElementById('client-status-last-seen');
+
+    fetch('/api/client-status')
+        .then(response => {
+            if (!response.ok) {
+                throw new Error('Network response was not ok');
+            }
+            return response.json();
+        })
+        .then(data => {
+            if (data.active) {
+                // Client is connected and recently seen
+                iconEl.innerHTML = '<i class="fas fa-check-circle text-success"></i>';
+                textEl.innerHTML = 'Connected';
+                lastSeenEl.innerText = `Last seen: ${formatTimeAgo(data.last_seen)}`;
+            } else if (data.registered && !data.active) {
+                // Client is registered but not seen recently
+                iconEl.innerHTML = '<i class="fas fa-exclamation-triangle text-warning"></i>';
+                textEl.innerHTML = 'Disconnected';
+                lastSeenEl.innerText = `Last seen: ${formatTimeAgo(data.last_seen)}`;
+            } else {
+                // Client has never connected
+                iconEl.innerHTML = '<i class="fas fa-times-circle text-danger"></i>';
+                textEl.innerHTML = 'Not Connected';
+                lastSeenEl.innerText = 'No client activity detected.';
+            }
+        })
+        .catch(error => {
+            console.error('Error checking client status:', error);
+            iconEl.innerHTML = '<i class="fas fa-exclamation-circle text-danger"></i>';
+            textEl.innerHTML = 'Error';
+            lastSeenEl.innerText = 'Could not check status.';
+        });
+}
+
+// Run on page load
+document.addEventListener('DOMContentLoaded', () => {
+    checkClientStatus();
+    
+    // Set up a poller to check the status every 10 seconds
+    setInterval(checkClientStatus, 10000);
+});
 </script>
 {% endblock %}
