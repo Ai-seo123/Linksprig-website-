@@ -11,35 +11,39 @@
                 </div>
                 <div class="card-body">
 
-                    <p class="text-muted">Search LinkedIn profiles by keywords and automatically send connection requests.</p>
-                    
-                    
+                    <p class="text-muted">Search LinkedIn profiles by keywords and automatically send connection
+                        requests.</p>
+
+
                     <form method="POST" id="searchForm">
                         <div class="form-group">
                             <label for="keywords">Search Keywords</label>
-                            <input type="text" class="form-control" id="keywords" name="keywords" placeholder="e.g., software engineer, marketing manager" required>
+                            <input type="text" class="form-control" id="keywords" name="keywords"
+                                placeholder="e.g., software engineer, marketing manager" required>
                             <small class="form-text">Use relevant job titles, skills, or industry keywords.</small>
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="location">Location (Optional)</label>
-                            <input type="text" class="form-control" id="location" name="location" placeholder="e.g., San Francisco, New York">
+                            <input type="text" class="form-control" id="location" name="location"
+                                placeholder="e.g., San Francisco, New York">
                             <small class="form-text">Leave empty to search globally.</small>
                         </div>
-                        
+
                         <div class="form-group">
                             <label for="max_invites">Maximum Invites</label>
-                            <input type="number" class="form-control" id="max_invites" name="max_invites" value="10" min="1" max="50" required>
+                            <input type="number" class="form-control" id="max_invites" name="max_invites" value="10"
+                                min="1" max="50" required>
                             <small class="form-text">Limit the number of connection requests sent (1-50).</small>
                         </div>
-                        
+
                         <button type="submit" class="btn btn-primary" id="searchBtn">
                             <i class="fas fa-search"></i> Start Search
                         </button>
                     </form>
                 </div>
             </div>
-            
+
             {% if search_info %}
             <div class="card" id="resultsCard">
                 <div class="card-header">
@@ -57,7 +61,7 @@
         </div>
 
         <div>
-            <div class="card" id="statusCard" {% if not search_info %}style="display: none;"{% endif %}>
+            <div class="card" id="statusCard" {% if not search_info %}style="display: none;" {% endif %}>
                 <div class="card-header">
                     <h5><i class="fas fa-chart-line"></i> Search Status</h5>
                 </div>
@@ -68,140 +72,154 @@
                     <div class="progress mb-2" style="display: none;" id="progressBar">
                         <div class="progress-bar" role="progressbar" style="width: 0%"></div>
                     </div>
-                    <button type="button" class="btn btn-danger btn-sm btn-block" id="stopSearchBtn" style="display: none;">
+                    <button type="button" class="btn btn-danger btn-sm btn-block" id="stopSearchBtn"
+                        style="display: none;">
                         <i class="fas fa-stop"></i> Stop Search
                     </button>
                 </div>
             </div>
 
             <div class="card">
-                <div class="card-header"><h5><i class="fas fa-lightbulb"></i> Search Tips</h5></div>
+                <div class="card-header">
+                    <h5><i class="fas fa-lightbulb"></i> Search Tips</h5>
+                </div>
                 <div class="card-body">
                     <ul class="list-unstyled">
-                        <li class="mb-2"><i class="fas fa-check text-success"></i> Use specific job titles for accuracy.</li>
-                        <li class="mb-2"><i class="fas fa-check text-success"></i> Combine keywords for targeted results.</li>
-                        <li class="mb-2"><i class="fas fa-check text-success"></i> Add a location to narrow your search.</li>
-                        <li class="mb-2"><i class="fas fa-check text-success"></i> Start with smaller invite limits.</li>
+                        <li class="mb-2"><i class="fas fa-check text-success"></i> Use specific job titles for accuracy.
+                        </li>
+                        <li class="mb-2"><i class="fas fa-check text-success"></i> Combine keywords for targeted
+                            results.</li>
+                        <li class="mb-2"><i class="fas fa-check text-success"></i> Add a location to narrow your search.
+                        </li>
+                        <li class="mb-2"><i class="fas fa-check text-success"></i> Start with smaller invite limits.
+                        </li>
                     </ul>
                 </div>
             </div>
         </div>
     </div>
 </div>
+<!-- Hidden element to pass search info to JS safely -->
+{% if search_info %}
+<div id="search-info-data" data-search-id="{{ search_info.search_id }}" data-keywords="{{ search_info.keywords }}"
+    style="display: none;"></div>
+{% endif %}
 {% endblock %}
 
 {% block scripts %}
 <script>
-let currentSearchId = null;
-let statusInterval = null;
+    let currentSearchId = null;
+    let statusInterval = null;
 
-document.addEventListener('DOMContentLoaded', function() {
-    checkClientStatus();
-    {% if search_info %}
-    currentSearchId = "{{ search_info.search_id }}";
-    document.getElementById('statusCard').style.display = 'block';
-    startSearchMonitoring();
-    {% endif %}
-});
+    document.addEventListener('DOMContentLoaded', function () {
+        checkClientStatus();
+        // Pass search_info safely via a data attribute to avoid JS syntax errors in the editor
+        const searchData = document.getElementById('search-info-data');
+        if (searchData && searchData.dataset.searchId) {
+            currentSearchId = searchData.dataset.searchId;
+            document.getElementById('statusCard').style.display = 'block';
+            startSearchMonitoring();
+        }
+    });
 
-function checkClientStatus() {
-    fetch('/check_client_status')
-        .then(response => response.json())
-        .then(data => {
-            const alertElement = document.getElementById('clientStatusAlert');
-            const searchBtn = document.getElementById('searchBtn');
-            
-            if (!data.available) {
-                alertElement.style.display = 'block';
-                searchBtn.disabled = true;
-                searchBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Client Not Available';
-            } else {
-                alertElement.style.display = 'none';
-                searchBtn.disabled = false;
-                searchBtn.innerHTML = '<i class="fas fa-search"></i> Start Search';
-            }
-        })
-        .catch(error => {
-            console.error('Error checking client status:', error);
-            document.getElementById('clientStatusAlert').style.display = 'block';
-        });
-}
-
-function startSearchMonitoring() {
-    if (!currentSearchId) return;
-    
-    const statusElement = document.getElementById('searchStatus');
-    const progressBar = document.getElementById('progressBar');
-    const progressBarFill = progressBar.querySelector('.progress-bar');
-    const stopBtn = document.getElementById('stopSearchBtn');
-    
-    statusElement.innerHTML = '<p class="text-primary">Search in progress...</p>';
-    progressBar.style.display = 'block';
-    stopBtn.style.display = 'block';
-    
-    // Poll for results every 3 seconds
-    statusInterval = setInterval(() => {
-        fetch(`/search_results/${currentSearchId}`)
+    function checkClientStatus() {
+        fetch('/check_client_status')
             .then(response => response.json())
             .then(data => {
-                if (data.error) {
-                    statusElement.innerHTML = `<p class="text-danger">Error: ${data.error}</p>`;
-                    clearInterval(statusInterval);
-                    return;
+                const alertElement = document.getElementById('clientStatusAlert');
+                const searchBtn = document.getElementById('searchBtn');
+
+                if (!data.available) {
+                    alertElement.style.display = 'block';
+                    searchBtn.disabled = true;
+                    searchBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Client Not Available';
+                } else {
+                    alertElement.style.display = 'none';
+                    searchBtn.disabled = false;
+                    searchBtn.innerHTML = '<i class="fas fa-search"></i> Start Search';
                 }
-                
-                if (data.results) {
-                    const results = data.results;
-                    
-                    // Update progress
-                    if (results.total_processed && results.total_found) {
-                        const progress = Math.round((results.total_processed / results.total_found) * 100);
-                        progressBarFill.style.width = `${progress}%`;
-                        progressBarFill.textContent = `${progress}%`;
+            })
+            .catch(error => {
+                console.error('Error checking client status:', error);
+                document.getElementById('clientStatusAlert').style.display = 'block';
+            });
+    }
+
+    function startSearchMonitoring() {
+        if (!currentSearchId) return;
+
+        const statusElement = document.getElementById('searchStatus');
+        const progressBar = document.getElementById('progressBar');
+        const progressBarFill = progressBar.querySelector('.progress-bar');
+        const stopBtn = document.getElementById('stopSearchBtn');
+
+        statusElement.innerHTML = '<p class="text-primary">Search in progress...</p>';
+        progressBar.style.display = 'block';
+        stopBtn.style.display = 'block';
+
+        // Poll for results every 3 seconds
+        statusInterval = setInterval(() => {
+            fetch(`/search_results/${currentSearchId}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        statusElement.innerHTML = `<p class="text-danger">Error: ${data.error}</p>`;
+                        clearInterval(statusInterval);
+                        return;
                     }
-                    
-                    // Update status
-                    statusElement.innerHTML = `
+
+                    if (data.results) {
+                        const results = data.results;
+
+                        // Update progress
+                        if (results.total_processed && results.total_found) {
+                            const progress = Math.round((results.total_processed / results.total_found) * 100);
+                            progressBarFill.style.width = `${progress}%`;
+                            progressBarFill.textContent = `${progress}%`;
+                        }
+
+                        // Update status
+                        statusElement.innerHTML = `
                         <p class="text-info">Found: ${results.total_found || 0} profiles</p>
                         <p class="text-success">Processed: ${results.total_processed || 0}</p>
                         <p class="text-primary">Connected: ${results.connections_sent || 0}</p>
                     `;
-                    
-                    // Display results
-                    displaySearchResults(results);
-                    
-                    // Check if completed
-                    if (results.completed) {
-                        statusElement.innerHTML += '<p class="text-success"><strong>Search completed!</strong></p>';
-                        progressBarFill.style.width = '100%';
-                        progressBarFill.textContent = '100%';
-                        stopBtn.style.display = 'none';
-                        clearInterval(statusInterval);
-                    }
-                }
-            })
-            .catch(error => {
-                console.error('Error fetching search results:', error);
-                statusElement.innerHTML = '<p class="text-danger">Error fetching results</p>';
-            });
-    }, 3000);
-}
 
-function displaySearchResults(results) {
-    const resultsContainer = document.getElementById('searchResults');
-    
-    if (!results.profiles || results.profiles.length === 0) {
-        resultsContainer.innerHTML = '<p class="text-muted">No profiles found yet...</p>';
-        return;
+                        // Display results
+                        displaySearchResults(results);
+
+                        // Check if completed
+                        if (results.completed) {
+                            statusElement.innerHTML += '<p class="text-success"><strong>Search completed!</strong></p>';
+                            progressBarFill.style.width = '100%';
+                            progressBarFill.textContent = '100%';
+                            stopBtn.style.display = 'none';
+                            clearInterval(statusInterval);
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching search results:', error);
+                    statusElement.innerHTML = '<p class="text-danger">Error fetching results</p>';
+                });
+        }, 3000);
     }
-    
-    let html = '<div class="search-results-list">';
-    
-    results.profiles.forEach((profile, index) => {
-        const statusClass = profile.connected ? 'success' : (profile.error ? 'danger' : 'secondary');
-        const statusText = profile.connected ? 'Connected' : (profile.error ? 'Failed' : 'Pending');
-        
-        html += `
+
+    function displaySearchResults(results) {
+        const resultsContainer = document.getElementById('searchResults');
+
+        if (!results.profiles || results.profiles.length === 0) {
+            resultsContainer.innerHTML = '<p class="text-muted">No profiles found yet...</p>';
+            return;
+        }
+
+        let html = '<div class="search-results-list">';
+
+        results.profiles.forEach((profile, index) => {
+            const statusClass = profile.connected ? 'success' : (profile.error ? 'danger' : 'secondary');
+            const statusText = profile.connected ? 'Connected' : (profile.error ? 'Failed' : 'Pending');
+
+            html += `
             <div class="search-result-item mb-3 p-3 border rounded">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
@@ -210,54 +228,54 @@ function displaySearchResults(results) {
                         <p class="mb-1 small">${profile.location || 'Unknown location'}</p>
                         ${profile.linkedin_url ? `<a href="${profile.linkedin_url}" target="_blank" class="small">View Profile</a>` : ''}
                     </div>
-                    <span classT="badge badge-${statusClass}">${statusText}</span>
+                    <span class="badge badge-${statusClass}">${statusText}</span>
                 </div>
                 ${profile.message ? `<div class="mt-2 small"><strong>Message:</strong> ${profile.message}</div>` : ''}
                 ${profile.error ? `<div class="mt-2 small text-danger"><strong>Error:</strong> ${profile.error}</div>` : ''}
             </div>
         `;
-    });
-    
-    html += '</div>';
-    resultsContainer.innerHTML = html;
-}
+        });
 
-// Stop search functionality
-document.getElementById('stopSearchBtn').addEventListener('click', function() {
-    if (statusInterval) {
-        clearInterval(statusInterval);
-        statusInterval = null;
+        html += '</div>';
+        resultsContainer.innerHTML = html;
     }
-    
-    document.getElementById('searchStatus').innerHTML = '<p class="text-warning">Search stopped by user</p>';
-    this.style.display = 'none';
-});
 
-// Form submission handling
-document.getElementById('searchForm').addEventListener('submit', function(e) {
-    // Let the form submit normally - the Flask route will handle it
-    // This is just to update the UI
-    document.getElementById('searchBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
-    document.getElementById('searchBtn').disabled = true;
-});
+    // Stop search functionality
+    document.getElementById('stopSearchBtn').addEventListener('click', function () {
+        if (statusInterval) {
+            clearInterval(statusInterval);
+            statusInterval = null;
+        }
 
-document.getElementById('stopSearchBtn')?.addEventListener('click', function() {
-    if (!currentSearchId) return;
-    if (!confirm("Are you sure you want to stop this search?")) return;
+        document.getElementById('searchStatus').innerHTML = '<p class="text-warning">Search stopped by user</p>';
+        this.style.display = 'none';
+    });
 
-    fetch(`/stop_task/${currentSearchId}`, { method: 'POST' })
-        .then(res => res.json())
-        .then(data => {
-            if (data.success) {
-                alert("✅ Search stopped successfully.");
-                clearInterval(statusInterval);
-                document.getElementById('searchStatus').innerHTML = "<p class='text-danger'>Search stopped.</p>";
-                document.getElementById('stopSearchBtn').style.display = 'none';
-            } else {
-                alert("⚠️ Failed to stop search: " + data.message);
-            }
-        })
-        .catch(err => console.error("Stop search error:", err));
-});
+    // Form submission handling
+    document.getElementById('searchForm').addEventListener('submit', function (e) {
+        // Let the form submit normally - the Flask route will handle it
+        // This is just to update the UI
+        document.getElementById('searchBtn').innerHTML = '<i class="fas fa-spinner fa-spin"></i> Starting...';
+        document.getElementById('searchBtn').disabled = true;
+    });
+
+    document.getElementById('stopSearchBtn')?.addEventListener('click', function () {
+        if (!currentSearchId) return;
+        if (!confirm("Are you sure you want to stop this search?")) return;
+
+        fetch(`/stop_task/${currentSearchId}`, { method: 'POST' })
+            .then(res => res.json())
+            .then(data => {
+                if (data.success) {
+                    alert("✅ Search stopped successfully.");
+                    clearInterval(statusInterval);
+                    document.getElementById('searchStatus').innerHTML = "<p class='text-danger'>Search stopped.</p>";
+                    document.getElementById('stopSearchBtn').style.display = 'none';
+                } else {
+                    alert("⚠️ Failed to stop search: " + data.message);
+                }
+            })
+            .catch(err => console.error("Stop search error:", err));
+    });
 </script>
 {% endblock %}

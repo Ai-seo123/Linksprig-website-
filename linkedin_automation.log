@@ -4,3 +4,126 @@
  * Running on http://192.168.0.184:5000
 2025-09-29 18:45:27,274 - INFO - [33mPress CTRL+C to quit[0m
 2025-09-29 18:45:27,276 - INFO -  * Restarting with stat
+2026-03-02 19:46:28,572 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.185:5000
+2026-03-02 19:46:28,584 - INFO - [33mPress CTRL+C to quit[0m
+2026-03-02 19:46:28,584 - INFO - [33mPress CTRL+C to quit[0m
+2026-03-02 19:46:28,592 - INFO -  * Restarting with stat
+2026-03-02 19:46:28,596 - INFO -  * Restarting with stat
+2026-03-02 19:46:42,732 - WARNING -  * Debugger is active!
+2026-03-02 19:46:42,744 - INFO -  * Debugger PIN: 100-754-397
+2026-03-02 19:46:42,773 - WARNING -  * Debugger is active!
+2026-03-02 19:46:42,816 - INFO -  * Debugger PIN: 565-665-117
+2026-03-02 19:47:42,168 - INFO - 127.0.0.1 - - [02/Mar/2026 19:47:42] "[32mGET / HTTP/1.1[0m" 302 -
+2026-03-02 19:47:42,460 - INFO - 127.0.0.1 - - [02/Mar/2026 19:47:42] "GET /login HTTP/1.1" 200 -
+2026-03-02 19:47:42,658 - INFO - 127.0.0.1 - - [02/Mar/2026 19:47:42] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-02 19:47:43,469 - INFO - 127.0.0.1 - - [02/Mar/2026 19:47:43] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-03-02 19:47:52,029 - INFO - 127.0.0.1 - - [02/Mar/2026 19:47:52] "POST /login HTTP/1.1" 200 -
+2026-03-02 19:47:52,114 - INFO - 127.0.0.1 - - [02/Mar/2026 19:47:52] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-02 19:48:03,335 - INFO - 127.0.0.1 - - [02/Mar/2026 19:48:03] "[32mPOST /login HTTP/1.1[0m" 302 -
+2026-03-02 19:48:03,678 - INFO - 127.0.0.1 - - [02/Mar/2026 19:48:03] "GET /dashboard HTTP/1.1" 200 -
+2026-03-02 19:48:03,764 - INFO - 127.0.0.1 - - [02/Mar/2026 19:48:03] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-02 19:48:04,116 - INFO - 127.0.0.1 - - [02/Mar/2026 19:48:04] "GET /static/images/linksprig-logo.png HTTP/1.1" 200 -
+2026-03-02 19:48:08,329 - INFO - 127.0.0.1 - - [02/Mar/2026 19:48:08] "GET /settings HTTP/1.1" 200 -
+2026-03-02 19:48:08,542 - INFO - 127.0.0.1 - - [02/Mar/2026 19:48:08] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-02 19:48:08,830 - INFO - 127.0.0.1 - - [02/Mar/2026 19:48:08] "[36mGET /static/images/linksprig-logo.png HTTP/1.1[0m" 304 -
+2026-03-02 19:48:21,023 - INFO - 127.0.0.1 - - [02/Mar/2026 19:48:21] "[33mGET /reset-password HTTP/1.1[0m" 404 -
+2026-03-02 19:48:21,090 - INFO - 127.0.0.1 - - [02/Mar/2026 19:48:21] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-02 19:48:21,268 - INFO - 127.0.0.1 - - [02/Mar/2026 19:48:21] "[36mGET /static/images/linksprig-logo.png HTTP/1.1[0m" 304 -
+2026-03-02 19:48:23,000 - INFO - 127.0.0.1 - - [02/Mar/2026 19:48:23] "GET /dashboard HTTP/1.1" 200 -
+2026-03-02 19:48:23,071 - INFO - 127.0.0.1 - - [02/Mar/2026 19:48:23] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-02 19:48:23,141 - INFO - 127.0.0.1 - - [02/Mar/2026 19:48:23] "[36mGET /static/images/linksprig-logo.png HTTP/1.1[0m" 304 -
+2026-03-02 19:48:25,049 - INFO - 127.0.0.1 - - [02/Mar/2026 19:48:25] "[32mGET /logout HTTP/1.1[0m" 302 -
+2026-03-02 19:48:25,100 - INFO - 127.0.0.1 - - [02/Mar/2026 19:48:25] "GET /login HTTP/1.1" 200 -
+2026-03-02 19:48:25,304 - INFO - 127.0.0.1 - - [02/Mar/2026 19:48:25] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-02 19:49:08,942 - INFO - 127.0.0.1 - - [02/Mar/2026 19:49:08] "GET /forgot-password HTTP/1.1" 200 -
+2026-03-02 19:49:09,238 - INFO - 127.0.0.1 - - [02/Mar/2026 19:49:09] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-02 19:49:13,332 - INFO - 127.0.0.1 - - [02/Mar/2026 19:49:13] "GET /login HTTP/1.1" 200 -
+2026-03-02 19:49:13,480 - INFO - 127.0.0.1 - - [02/Mar/2026 19:49:13] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-02 19:56:55,196 - INFO - 127.0.0.1 - - [02/Mar/2026 19:56:55] "[32mGET / HTTP/1.1[0m" 302 -
+2026-03-02 19:56:55,278 - INFO - 127.0.0.1 - - [02/Mar/2026 19:56:55] "GET /login HTTP/1.1" 200 -
+2026-03-02 19:56:55,451 - INFO - 127.0.0.1 - - [02/Mar/2026 19:56:55] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-02 19:56:56,003 - INFO - 127.0.0.1 - - [02/Mar/2026 19:56:56] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-03-02 19:56:58,975 - INFO - 127.0.0.1 - - [02/Mar/2026 19:56:58] "GET /forgot-password HTTP/1.1" 200 -
+2026-03-02 19:56:59,276 - INFO - 127.0.0.1 - - [02/Mar/2026 19:56:59] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-02 19:57:00,795 - INFO - 127.0.0.1 - - [02/Mar/2026 19:57:00] "GET /login HTTP/1.1" 200 -
+2026-03-02 19:57:00,922 - INFO - 127.0.0.1 - - [02/Mar/2026 19:57:00] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-04 17:11:47,235 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.185:5000
+2026-03-04 17:11:47,238 - INFO - [33mPress CTRL+C to quit[0m
+2026-03-04 17:11:47,243 - INFO -  * Restarting with stat
+2026-03-04 17:11:54,196 - WARNING -  * Debugger is active!
+2026-03-04 17:11:54,227 - INFO -  * Debugger PIN: 565-665-117
+2026-03-04 17:11:54,381 - INFO - 127.0.0.1 - - [04/Mar/2026 17:11:54] "[32mGET / HTTP/1.1[0m" 302 -
+2026-03-04 17:11:54,479 - INFO - 127.0.0.1 - - [04/Mar/2026 17:11:54] "GET /login HTTP/1.1" 200 -
+2026-03-04 17:11:54,579 - INFO - 127.0.0.1 - - [04/Mar/2026 17:11:54] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-04 17:11:55,315 - INFO - 127.0.0.1 - - [04/Mar/2026 17:11:55] "[33mGET /favicon.ico HTTP/1.1[0m" 404 -
+2026-03-04 17:11:57,299 - INFO - 127.0.0.1 - - [04/Mar/2026 17:11:57] "GET /forgot-password HTTP/1.1" 200 -
+2026-03-04 17:11:57,600 - INFO - 127.0.0.1 - - [04/Mar/2026 17:11:57] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-04 17:12:06,037 - INFO - 127.0.0.1 - - [04/Mar/2026 17:12:06] "[32mPOST /forgot-password HTTP/1.1[0m" 302 -
+2026-03-04 17:12:06,052 - INFO - 127.0.0.1 - - [04/Mar/2026 17:12:06] "GET /login HTTP/1.1" 200 -
+2026-03-04 17:12:06,120 - INFO - 127.0.0.1 - - [04/Mar/2026 17:12:06] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-04 17:18:16,781 - ERROR - Exception on /reset-password/invalidtoken123 [GET]
+Traceback (most recent call last):
+  File "C:\Users\ARNAV\AppData\Roaming\Python\Python313\site-packages\flask\app.py", line 1511, in wsgi_app
+    response = self.full_dispatch_request()
+  File "C:\Users\ARNAV\AppData\Roaming\Python\Python313\site-packages\flask\app.py", line 919, in full_dispatch_request
+    rv = self.handle_user_exception(e)
+  File "C:\Users\ARNAV\AppData\Roaming\Python\Python313\site-packages\flask\app.py", line 917, in full_dispatch_request
+    rv = self.dispatch_request()
+  File "C:\Users\ARNAV\AppData\Roaming\Python\Python313\site-packages\flask\app.py", line 902, in dispatch_request
+    return self.ensure_sync(self.view_functions[rule.endpoint])(**view_args)  # type: ignore[no-any-return]
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^
+  File "c:\Users\ARNAV\OneDrive\Desktop\Linked_dashboard_uptd\app.py", line 400, in reset_password
+    user = User.objects(password_reset_token=token).first()
+           ^^^^^^^^^^^^
+  File "C:\Users\ARNAV\AppData\Roaming\Python\Python313\site-packages\mongoengine\queryset\manager.py", line 38, in __get__
+    queryset = queryset_class(owner, owner._get_collection())
+                                     ~~~~~~~~~~~~~~~~~~~~~^^
+  File "C:\Users\ARNAV\AppData\Roaming\Python\Python313\site-packages\mongoengine\document.py", line 226, in _get_collection
+    db = cls._get_db()
+  File "C:\Users\ARNAV\AppData\Roaming\Python\Python313\site-packages\mongoengine\document.py", line 202, in _get_db
+    return get_db(cls._meta.get("db_alias", DEFAULT_CONNECTION_NAME))
+  File "C:\Users\ARNAV\AppData\Roaming\Python\Python313\site-packages\mongoengine\connection.py", line 419, in get_db
+    conn = get_connection(alias)
+  File "C:\Users\ARNAV\AppData\Roaming\Python\Python313\site-packages\mongoengine\connection.py", line 321, in get_connection
+    raise ConnectionFailure(msg)
+mongoengine.connection.ConnectionFailure: You have not defined a default connection
+2026-03-04 17:21:56,246 - ERROR - DB error looking up reset token: You have not defined a default connection
+2026-03-04 17:21:56,252 - ERROR - Error processing password reset for test@example.com: You have not defined a default connection
+2026-03-04 17:25:57,745 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.185:5000
+2026-03-04 17:25:57,746 - INFO - [33mPress CTRL+C to quit[0m
+2026-03-04 17:25:57,748 - INFO -  * Restarting with stat
+2026-03-04 17:26:02,199 - WARNING -  * Debugger is active!
+2026-03-04 17:26:02,207 - INFO -  * Debugger PIN: 565-665-117
+2026-03-04 17:26:02,464 - INFO - 127.0.0.1 - - [04/Mar/2026 17:26:02] "GET /login HTTP/1.1" 200 -
+2026-03-04 17:26:02,552 - INFO - 127.0.0.1 - - [04/Mar/2026 17:26:02] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-04 17:26:04,752 - INFO - 127.0.0.1 - - [04/Mar/2026 17:26:04] "GET /forgot-password HTTP/1.1" 200 -
+2026-03-04 17:26:05,060 - INFO - 127.0.0.1 - - [04/Mar/2026 17:26:05] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-04 17:26:09,413 - INFO - 127.0.0.1 - - [04/Mar/2026 17:26:09] "[32mPOST /forgot-password HTTP/1.1[0m" 302 -
+2026-03-04 17:26:09,426 - INFO - 127.0.0.1 - - [04/Mar/2026 17:26:09] "GET /login HTTP/1.1" 200 -
+2026-03-04 17:26:09,515 - INFO - 127.0.0.1 - - [04/Mar/2026 17:26:09] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-04 17:50:50,312 - INFO - [31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.0.185:5000
+2026-03-04 17:50:50,314 - INFO - [33mPress CTRL+C to quit[0m
+2026-03-04 17:50:50,319 - INFO -  * Restarting with stat
+2026-03-04 17:50:56,475 - WARNING -  * Debugger is active!
+2026-03-04 17:50:56,483 - INFO -  * Debugger PIN: 565-665-117
+2026-03-04 17:52:31,985 - INFO - 127.0.0.1 - - [04/Mar/2026 17:52:31] "[32mGET / HTTP/1.1[0m" 302 -
+2026-03-04 17:52:32,092 - INFO - 127.0.0.1 - - [04/Mar/2026 17:52:32] "GET /login HTTP/1.1" 200 -
+2026-03-04 17:52:32,258 - INFO - 127.0.0.1 - - [04/Mar/2026 17:52:32] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-04 17:52:34,778 - INFO - 127.0.0.1 - - [04/Mar/2026 17:52:34] "GET /forgot-password HTTP/1.1" 200 -
+2026-03-04 17:52:34,881 - INFO - 127.0.0.1 - - [04/Mar/2026 17:52:34] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -
+2026-03-04 17:52:41,105 - INFO - Password reset email sent successfully to arnavrocks1108@gmail.com
+2026-03-04 17:52:41,107 - INFO - 127.0.0.1 - - [04/Mar/2026 17:52:41] "[32mPOST /forgot-password HTTP/1.1[0m" 302 -
+2026-03-04 17:52:41,121 - INFO - 127.0.0.1 - - [04/Mar/2026 17:52:41] "GET /login HTTP/1.1" 200 -
+2026-03-04 17:52:41,482 - INFO - 127.0.0.1 - - [04/Mar/2026 17:52:41] "[36mGET /static/css/style.css HTTP/1.1[0m" 304 -

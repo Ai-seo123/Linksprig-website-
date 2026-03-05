@@ -9,30 +9,33 @@
             <span class="badge bg-primary rounded-pill">Automated & Personalized</span>
         </div>
         <div class="card-body">
-            
+
             {% if not campaign_data %}
-            
+
             <ul class="nav nav-tabs" id="campaignSourceTabs" role="tablist">
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link active" id="csv-tab" data-bs-toggle="tab" data-bs-target="#csv-tab-pane" type="button" role="tab">
+                    <button class="nav-link active" id="csv-tab" data-bs-toggle="tab" data-bs-target="#csv-tab-pane"
+                        type="button" role="tab">
                         <i class="fas fa-file-csv me-2"></i>Upload CSV
                     </button>
                 </li>
                 <li class="nav-item" role="presentation">
-                    <button class="nav-link" id="salesnav-lists-tab" data-bs-toggle="tab" data-bs-target="#salesnav-lists-pane" type="button" role="tab">
+                    <button class="nav-link" id="salesnav-lists-tab" data-bs-toggle="tab"
+                        data-bs-target="#salesnav-lists-pane" type="button" role="tab">
                         <i class="fas fa-list-ul me-2"></i>Sales Nav Outreach
                     </button>
                 </li>
             </ul>
 
             <div class="tab-content" id="campaignSourceTabsContent">
-                
+
                 <div class="tab-pane fade show active p-3" id="csv-tab-pane" role="tabpanel">
                     <div class="alert alert-info d-flex align-items-center mb-3">
                         <i class="fas fa-info-circle fa-2x me-3"></i>
                         <div>
                             Upload your CSV file to start an <b>automated outreach campaign</b>.<br>
-                            <small>Required columns: <b>Name</b>, <b>Company</b>, <b>Role</b>, <b>LinkedIn_profile</b></small>
+                            <small>Required columns: <b>Name</b>, <b>Company</b>, <b>Role</b>,
+                                <b>LinkedIn_profile</b></small>
                         </div>
                     </div>
                     <form method="POST" enctype="multipart/form-data" action="{{ url_for('outreach') }}">
@@ -43,7 +46,8 @@
                             </div>
                             <div class="col-md-2">
                                 <label for="max_contacts" class="form-label fw-bold">Max Contacts</label>
-                                <input type="number" name="max_contacts" id="max_contacts" class="form-control" min="1" max="100" value="20" />
+                                <input type="number" name="max_contacts" id="max_contacts" class="form-control" min="1"
+                                    max="100" value="20" />
                             </div>
                             <div class="col-md-5">
                                 <button type="submit" class="btn btn-primary btn-lg w-100">
@@ -59,18 +63,21 @@
                         <i class="fas fa-info-circle fa-2x me-3"></i>
                         <div>
                             Paste a <b>Sales Navigator search URL</b> to collect profiles.<br>
-                            <small>The client bot will scrape the search results for you to build a campaign list.</small>
+                            <small>The client bot will scrape the search results for you to build a campaign
+                                list.</small>
                         </div>
                     </div>
-                     <form action="{{ url_for('start_collection') }}" method="POST">
+                    <form action="{{ url_for('start_collection') }}" method="POST">
                         <div class="row g-3 align-items-end">
                             <div class="col-md-8">
                                 <label for="sales_nav_url" class="form-label fw-bold">Sales Navigator Search URL</label>
-                                <input type="url" class="form-control" id="sales_nav_url" name="sales_nav_url" placeholder="https://www.linkedin.com/sales/search/people..." required>
+                                <input type="url" class="form-control" id="sales_nav_url" name="sales_nav_url"
+                                    placeholder="https://www.linkedin.com/sales/search/people..." required>
                             </div>
                             <div class="col-md-4">
                                 <label for="max_profiles" class="form-label fw-bold">Max Profiles to Collect</label>
-                                <input type="number" class="form-control" id="max_profiles" name="max_profiles" value="25" min="1" max="1000">
+                                <input type="number" class="form-control" id="max_profiles" name="max_profiles"
+                                    value="25" min="1" max="1000">
                             </div>
                             <div class="col-12 mt-3">
                                 <button type="submit" class="btn btn-primary btn-lg w-100">
@@ -86,7 +93,8 @@
                         <i class="fas fa-robot fa-2x me-3"></i>
                         <div>
                             <b>Sales Navigator List Outreach</b><br>
-                            Select a saved "Leads" list from your Sales Navigator account. The bot will iterate through the list, generate messages, and ask for your approval before sending.
+                            Select a saved "Leads" list from your Sales Navigator account. The bot will iterate through
+                            the list, generate messages, and ask for your approval before sending.
                         </div>
                     </div>
 
@@ -96,24 +104,28 @@
                         </button>
                         <div id="fetch-spinner" class="mt-3" style="display:none;">
                             <div class="spinner-border text-primary" role="status"></div>
-                            <p class="mt-2 text-muted">Navigating to Sales Navigator to find your lists...<br>This may take a few seconds.</p>
+                            <p class="mt-2 text-muted">Navigating to Sales Navigator to find your lists...<br>This may
+                                take a few seconds.</p>
                         </div>
                     </div>
 
                     <div id="lists-selection-section" style="display:none;">
                         <h5 class="mb-3">Select a List to Target:</h5>
-                        <div class="list-group mb-4 shadow-sm" id="sales-nav-lists-container" style="max-height: 300px; overflow-y: auto;">
-                            </div>
-                        
+                        <div class="list-group mb-4 shadow-sm" id="sales-nav-lists-container"
+                            style="max-height: 300px; overflow-y: auto;">
+                        </div>
+
                         <div class="card bg-light">
                             <div class="card-body">
                                 <div class="row align-items-end">
                                     <div class="col-md-4">
                                         <label class="form-label fw-bold">Max Contacts to Process</label>
-                                        <input type="number" id="sn-max-contacts" class="form-control" value="10" min="1" max="50">
+                                        <input type="number" id="sn-max-contacts" class="form-control" value="10"
+                                            min="1" max="50">
                                     </div>
                                     <div class="col-md-8">
-                                        <button id="btn-start-sn-campaign" class="btn btn-success btn-lg w-100" disabled>
+                                        <button id="btn-start-sn-campaign" class="btn btn-success btn-lg w-100"
+                                            disabled>
                                             <i class="fas fa-paper-plane me-2"></i>Start Outreach Campaign
                                         </button>
                                     </div>
@@ -123,24 +135,24 @@
                     </div>
                 </div>
             </div>
-            
+
             {% else %}
             <div class="row mb-4">
                 <div class="col-lg-8">
                     <div class="alert alert-success mb-0 shadow-sm d-flex align-items-center">
-                    <i class="fas fa-check-circle fa-lg me-3"></i>
-                    <div>
-                        Campaign Active.<br/>
-                        Processing up to <b>{{ campaign_data.max_contacts }}</b> contacts.
-                    </div>
+                        <i class="fas fa-check-circle fa-lg me-3"></i>
+                        <div>
+                            Campaign Active.<br />
+                            Processing up to <b>{{ campaign_data.max_contacts }}</b> contacts.
+                        </div>
                     </div>
                 </div>
                 <div class="col-lg-4 text-end">
                     <button id="start-campaign" class="btn btn-success shadow-sm btn-lg" style="display:none;">
-                    <i class="fas fa-play-circle me-2"></i>Resume
+                        <i class="fas fa-play-circle me-2"></i>Resume
                     </button>
                     <button id="stop-campaign" class="btn btn-danger shadow-sm btn-lg">
-                    <i class="fas fa-stop-circle me-2"></i>Stop Campaign
+                        <i class="fas fa-stop-circle me-2"></i>Stop Campaign
                     </button>
                 </div>
             </div>
@@ -154,10 +166,10 @@
                     <table class="table table-hover align-middle mb-0">
                         <thead class="table-light">
                             <tr>
-                            <th>Name</th>
-                            <th>Company</th>
-                            <th>Role</th>
-                            <th>LinkedIn Profile</th>
+                                <th>Name</th>
+                                <th>Company</th>
+                                <th>Role</th>
+                                <th>LinkedIn Profile</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -167,16 +179,17 @@
                                 <td>{{ contact.Company }}</td>
                                 <td>{{ contact.Role }}</td>
                                 <td>
-                                <a href="{{ contact.LinkedIn_profile }}" target="_blank" class="text-primary">
-                                    <i class="fab fa-linkedin"></i> View
-                                </a>
+                                    <a href="{{ contact.LinkedIn_profile }}" target="_blank" class="text-primary">
+                                        <i class="fab fa-linkedin"></i> View
+                                    </a>
                                 </td>
                             </tr>
                             {% endfor %}
                             {% if campaign_data.contacts|length > 5 %}
                             <tr>
                                 <td colspan="4" class="text-center text-muted">
-                                <i class="fas fa-ellipsis-h"></i> ... and {{ campaign_data.contacts|length - 5 }} more contacts
+                                    <i class="fas fa-ellipsis-h"></i> ... and {{ campaign_data.contacts|length - 5 }}
+                                    more contacts
                                 </td>
                             </tr>
                             {% endif %}
@@ -189,41 +202,44 @@
             <div id="campaign-status" class="mt-4">
                 <div class="card bg-light shadow-sm">
                     <div class="card-body">
-                    <div class="d-flex align-items-center mb-4 gap-2">
-                        <h6 class="card-title mb-0"><i class="fas fa-chart-line me-2"></i> Campaign Progress</h6>
-                        <span id="status-badge" class="badge bg-primary">Initializing</span>
-                    </div>
-                    <div class="row text-center">
-                        <div class="col">
-                        <div class="h4 text-success mb-0" id="successful-count">0</div>
-                        <small class="text-muted">Successful</small>
+                        <div class="d-flex align-items-center mb-4 gap-2">
+                            <h6 class="card-title mb-0"><i class="fas fa-chart-line me-2"></i> Campaign Progress</h6>
+                            <span id="status-badge" class="badge bg-primary">Initializing</span>
                         </div>
-                        <div class="col">
-                        <div class="h4 text-danger mb-0" id="failed-count">0</div>
-                        <small class="text-muted">Failed</small>
+                        <div class="row text-center">
+                            <div class="col">
+                                <div class="h4 text-success mb-0" id="successful-count">0</div>
+                                <small class="text-muted">Successful</small>
+                            </div>
+                            <div class="col">
+                                <div class="h4 text-danger mb-0" id="failed-count">0</div>
+                                <small class="text-muted">Failed</small>
+                            </div>
+                            <div class="col">
+                                <div class="h4 text-warning mb-0" id="skipped-count">0</div>
+                                <small class="text-muted">Skipped</small>
+                            </div>
+                            <div class="col">
+                                <div class="h4 text-info mb-0" id="already-messaged-count">0</div>
+                                <small class="text-muted">Already Messaged</small>
+                            </div>
                         </div>
-                        <div class="col">
-                        <div class="h4 text-warning mb-0" id="skipped-count">0</div>
-                        <small class="text-muted">Skipped</small>
+                        <div class="my-3">
+                            <div class="progress" style="height: 1.2rem;">
+                                <div class="progress-bar bg-primary progress-bar-striped progress-bar-animated"
+                                    id="progress-bar" style="width: 0%"></div>
+                            </div>
+                            <small class="float-end mt-1" style="font-size:0.95em;">
+                                <span id="progress-current">0</span> /
+                                <span id="progress-total">{{ campaign_data.max_contacts if campaign_data else 0
+                                    }}</span> processed
+                            </small>
                         </div>
-                        <div class="col">
-                        <div class="h4 text-info mb-0" id="already-messaged-count">0</div>
-                        <small class="text-muted">Already Messaged</small>
+                        <div id="current-activity" class="alert alert-secondary py-2 px-3 mt-4 mb-0"
+                            style="display:none;">
+                            <i class="fas fa-spinner fa-spin me-2"></i>
+                            <span id="activity-text">Processing...</span>
                         </div>
-                    </div>
-                    <div class="my-3">
-                        <div class="progress" style="height: 1.2rem;">
-                        <div class="progress-bar bg-primary progress-bar-striped progress-bar-animated" id="progress-bar" style="width: 0%"></div>
-                        </div>
-                        <small class="float-end mt-1" style="font-size:0.95em;">
-                        <span id="progress-current">0</span> /
-                        <span id="progress-total">{{ campaign_data.max_contacts if campaign_data else 0 }}</span> processed
-                        </small>
-                    </div>
-                    <div id="current-activity" class="alert alert-secondary py-2 px-3 mt-4 mb-0" style="display:none;">
-                        <i class="fas fa-spinner fa-spin me-2"></i>
-                        <span id="activity-text">Processing...</span>
-                    </div>
                     </div>
                 </div>
             </div>
@@ -232,15 +248,17 @@
     </div>
 </div>
 
-<div class="modal fade" id="messagePreviewModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+<div class="modal fade" id="messagePreviewModal" tabindex="-1" aria-hidden="true" data-bs-backdrop="static"
+    data-bs-keyboard="false">
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header bg-primary text-white">
                 <h5 class="modal-title"><i class="fas fa-eye me-2"></i> Message Preview & Action</h5>
-                </div>
+            </div>
             <div class="modal-body">
                 <div class="alert alert-warning">
-                    <i class="fas fa-pause-circle me-2"></i> <strong>Action Required:</strong> The bot is paused waiting for your approval.
+                    <i class="fas fa-pause-circle me-2"></i> <strong>Action Required:</strong> The bot is paused waiting
+                    for your approval.
                 </div>
                 <div class="card mb-3">
                     <div class="card-header fw-bold">Contact Information</div>
@@ -248,7 +266,8 @@
                         <p class="mb-1"><strong>Name:</strong> <span id="preview-name">Loading...</span></p>
                         <p class="mb-1"><strong>Company:</strong> <span id="preview-company">...</span></p>
                         <p class="mb-1"><strong>Role:</strong> <span id="preview-role">...</span></p>
-                        <p class="mb-0"><strong>Profile:</strong> <a href="#" id="preview-linkedin" target="_blank" class="text-primary"><i class="fab fa-linkedin"></i> View Profile</a></p>
+                        <p class="mb-0"><strong>Profile:</strong> <a href="#" id="preview-linkedin" target="_blank"
+                                class="text-primary"><i class="fab fa-linkedin"></i> View Profile</a></p>
                     </div>
                 </div>
                 <div class="card">
@@ -288,7 +307,7 @@
     }
 
     // 2. Logic for Sales Nav List Fetching
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         const fetchBtn = document.getElementById('btn-fetch-lists');
         // Check if element exists (only on the "new campaign" view)
         if (fetchBtn) {
@@ -299,7 +318,7 @@
             let selectedListUrl = null;
 
             // Fetch Lists Button Click
-            fetchBtn.addEventListener('click', function() {
+            fetchBtn.addEventListener('click', function () {
                 fetchBtn.disabled = true;
                 spinner.style.display = 'block';
                 selectionSection.style.display = 'none';
@@ -307,7 +326,7 @@
                 fetch('/fetch_sales_nav_lists', { method: 'POST' })
                     .then(r => r.json())
                     .then(data => {
-                        if(data.success) {
+                        if (data.success) {
                             pollForLists(data.task_id);
                         } else {
                             alert('Error starting fetch: ' + data.message);
@@ -363,7 +382,7 @@
                         radio.checked = true;
                         selectedListUrl = list.url;
                         startBtn.disabled = false;
-                        
+
                         // Visual highlight
                         document.querySelectorAll('#sales-nav-lists-container .list-group-item').forEach(el => el.classList.remove('active'));
                         item.classList.add('active');
@@ -373,32 +392,32 @@
             }
 
             // Start Campaign Button Click
-            startBtn.addEventListener('click', function() {
+            startBtn.addEventListener('click', function () {
                 if (!selectedListUrl) return;
-                
+
                 const max = document.getElementById('sn-max-contacts').value;
                 startBtn.disabled = true;
                 startBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Starting...';
-                
+
                 fetch('/start_sales_nav_campaign', {
                     method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
+                    headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
                         list_url: selectedListUrl,
                         max_contacts: max
                     })
                 })
-                .then(r => r.json())
-                .then(data => {
-                    if(data.success) {
-                        // Reload page to trigger the "Active Campaign" view (handled by the else block)
-                        window.location.reload(); 
-                    } else {
-                        alert('Failed to start: ' + data.error);
-                        startBtn.disabled = false;
-                        startBtn.innerHTML = '<i class="fas fa-paper-plane me-2"></i>Start Outreach Campaign';
-                    }
-                });
+                    .then(r => r.json())
+                    .then(data => {
+                        if (data.success) {
+                            // Reload page to trigger the "Active Campaign" view (handled by the else block)
+                            window.location.reload();
+                        } else {
+                            alert('Failed to start: ' + data.error);
+                            startBtn.disabled = false;
+                            startBtn.innerHTML = '<i class="fas fa-paper-plane me-2"></i>Start Outreach Campaign';
+                        }
+                    });
             });
         }
     });

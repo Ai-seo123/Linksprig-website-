@@ -27,11 +27,15 @@ class User(Document):
     linkedin_password = StringField(max_length=255)
     gemini_api_key = StringField(max_length=255)
 
+    # Password Reset
+    password_reset_token = StringField()
+    password_reset_expires = DateTimeField()
+
     # Temporary plain password storage for LinkedIn automation (not recommended for production)
     _linkedin_password_plain = None
     subscription_status = StringField(default='trial', required=True)
     subscription_ends_at = DateTimeField(default=lambda: datetime.utcnow() + timedelta(days=60))
-    #stripe_customer_id = StringField()
+
     meta = {
         'collection': 'users'
     }
@@ -71,20 +75,37 @@ class User(Document):
 
     def is_subscription_active(self):
         """Check if user has time left (Trial OR Paid)"""
-        # If status is 'active' (paid), they are good
         if self.subscription_status == 'active':
             return True
-            
-        # If trial, check dates
         if self.subscription_ends_at and self.subscription_ends_at > datetime.utcnow():
             return True
-            
         return False
+
+    def generate_reset_token(self):
+        """Generate a secure password reset token valid for 1 hour"""
+        self.password_reset_token = str(uuid.uuid4()).replace('-', '')
+        self.password_reset_expires = datetime.utcnow() + timedelta(hours=1)
+        self.save()
+        return self.password_reset_token
+
+    def is_reset_token_valid(self, token):
+        """Check if the provided reset token is valid and not expired"""
+        return (
+            self.password_reset_token == token and
+            self.password_reset_expires is not None and
+            self.password_reset_expires > datetime.utcnow()
+        )
+
+    def clear_reset_token(self):
+        """Invalidate the reset token after use"""
+        self.password_reset_token = None
+        self.password_reset_expires = None
+        self.save()
 
     def to_dict(self):
         """Convert user to dictionary"""
         return {
-            'id': str(self.id),  # MongoDB ID; convert to string
+            'id': str(self.id),
             'email': self.email,
             'first_name': self.first_name,
             'last_name': self.last_name,
@@ -95,22 +116,21 @@ class User(Document):
 
     def __repr__(self):
         return f"<User {self.email}>"
-    
 
-# In models.py, update the Task model
+
 class Task(Document):
     meta = {'collection': 'tasks'}
-    
+
     user = ReferenceField(User, required=True)
-    task_type = StringField(required=True)  # outreach_campaign, profile_collection, etc.
-    status = StringField(required=True, default='queued')  # queued, processing, completed, failed
+    task_type = StringField(required=True)
+    status = StringField(required=True, default='queued')
     params = DictField()
     result = DictField()
     created_at = DateTimeField(default=datetime.utcnow)
     started_at = DateTimeField()
     completed_at = DateTimeField()
     error = StringField()
-    
+
     def to_dict(self):
         return {
             'id': str(self.id),
@@ -123,8 +143,10 @@ class Task(Document):
             'completed_at': self.completed_at.isoformat() if self.completed_at else None,
             'error': self.error
         }
+
     def __repr__(self):
         return f"<Task {self.id} type={self.task_type} user={self.user.email}>"
+
 
 class Payment(Document):
     meta = {'collection': 'payments'}
@@ -133,10 +155,10 @@ class Payment(Document):
     razorpay_order_id = StringField(required=True)
     razorpay_payment_id = StringField()
     razorpay_signature = StringField()
-    amount = IntField(required=True)  # Stored in smallest currency unit (paise)
+    amount = IntField(required=True)
     currency = StringField(default='USD')
-    status = StringField(default='created') # created, paid, failed
+    status = StringField(default='created')
     created_at = DateTimeField(default=datetime.utcnow)
-    
+
     def __repr__(self):
         return f"<Payment {self.razorpay_order_id} - {self.status}>"

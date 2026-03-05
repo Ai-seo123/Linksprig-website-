@@ -25,6 +25,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 import hubspot_services
 import hmac
 import hashlib
+from email_utils import send_password_reset_email
 # Load environment variables from .env file
 load_dotenv()
 
@@ -358,6 +359,92 @@ def login():
     
     return render_template('login.html')
 
+@application.route('/forgot-password', methods=['GET', 'POST'])
+def forgot_password():
+    """Step 1 – User requests a password reset email."""
+    if request.method == 'POST':
+        email = request.form.get('email', '').strip().lower()
+
+        if not email:
+            flash('Please enter your email address.', 'error')
+            return render_template('forgot_password.html')
+
+        try:
+            user = User.objects(email=email).first()
+
+            # Always show the same message whether the email exists or not
+            # to prevent user enumeration attacks.
+            if user:
+                token = user.generate_reset_token()
+                reset_url = url_for('reset_password', token=token, _external=True)
+                sent = send_password_reset_email(
+                    to_email=user.email,
+                    first_name=user.first_name,
+                    reset_url=reset_url
+                )
+                if not sent:
+                    # Log the failure but don't expose it to the user
+                    logger.error(f"Failed to send reset email to {email}")
+                else:
+                    logger.info(f"Password reset email sent successfully to {email}")
+            else:
+                logger.warning(f"Password reset requested for unregistered email: {email}")
+        except Exception as e:
+            logger.error(f"Error processing password reset for {email}: {e}")
+
+        flash(
+            'If an account exists for that email, a reset link has been sent. '
+            'Please check your inbox (and spam folder).',
+            'info'
+        )
+        return redirect(url_for('login'))
+
+    return render_template('forgot_password.html')
+
+@application.route('/reset-password/<token>', methods=['GET', 'POST'])
+def reset_password(token):
+    """Step 2 – User clicks the link and sets a new password."""
+    user = None
+    valid = False
+    try:
+        user = User.objects(password_reset_token=token).first()
+        valid = user is not None and user.is_reset_token_valid(token)
+    except Exception as e:
+        logger.error(f"DB error looking up reset token: {e}")
+        valid = False
+
+    if request.method == 'POST':
+        if not valid:
+            flash('This reset link is invalid or has expired.', 'error')
+            return redirect(url_for('forgot_password'))
+
+        password = request.form.get('password', '').strip()
+        confirm_password = request.form.get('confirm_password', '').strip()
+
+        if len(password) < 6:
+            flash('Password must be at least 6 characters long.', 'error')
+            return render_template('reset_password.html', valid_token=True, token=token, email=user.email)
+
+        if password != confirm_password:
+            flash('Passwords do not match.', 'error')
+            return render_template('reset_password.html', valid_token=True, token=token, email=user.email)
+
+        # Update password and clear the token
+        try:
+            user.set_password(password)
+            user.clear_reset_token()
+        except Exception as e:
+            logger.error(f"Failed to update password for reset token: {e}")
+            flash('An error occurred while updating your password. Please try again.', 'error')
+            return render_template('reset_password.html', valid_token=True, token=token, email=user.email)
+
+        flash('Your password has been updated! Please log in.', 'success')
+        return redirect(url_for('login'))
+
+    # GET request – show the form (or expired-link message)
+    email = user.email if valid else ''
+    return render_template('reset_password.html', valid_token=valid, token=token, email=email)
+
 @application.route('/dashboard')
 @login_required
 @subscription_required
@@ -509,7 +596,14 @@ def trigger_network_sync():
         task = Task(
             user=user,
             task_type='sync_network_stats',
-            params={'task_id': str(uuid.uuid4())},
+            params={
+                'task_id': str(uuid.uuid4()),
+                'user_config': {
+                    'linkedin_email': user.linkedin_email,
+                    'linkedin_password': user.linkedin_password,
+                    'gemini_api_key': user.gemini_api_key
+                }
+            },
             status='queued'
         )
         task.save()
@@ -1782,7 +1876,14 @@ def ai_inbox():
             task=Task(
                 user=user,
                 task_type=task_type, # 3. Use the dynamic task type
-                params={'process_id': process_id},
+                params={
+                    'process_id': process_id,
+                    'user_config': {
+                        'linkedin_email': user.linkedin_email,
+                        'linkedin_password': user.linkedin_password,
+                        'gemini_api_key': user.gemini_api_key
+                    }
+                },
                 status='queued'
             )
             task.save()
