@@ -25,6 +25,7 @@ class User(Document):
     # LinkedIn Settings
     linkedin_email = StringField(max_length=120)
     linkedin_password = StringField(max_length=255)
+    linkedin_session_version = StringField(default=lambda: uuid.uuid4().hex, max_length=64)
     # AI Quota Tracking (Company Proxy)
     ai_messages_today = IntField(default=0)
     ai_quota_reset_date = DateTimeField()
@@ -48,6 +49,7 @@ class User(Document):
     def set_password(self, password):
         """Hash and set password"""
         self.password_hash = generate_password_hash(password).decode('utf-8')
+        self.rotate_client_api_key()
 
     def check_password(self, password):
         """Check if password matches hash"""
@@ -58,6 +60,7 @@ class User(Document):
         self.linkedin_email = email
         self.linkedin_password = password
         self._linkedin_password_plain = password
+        self.bump_linkedin_profile_version()
 
     def get_linkedin_password(self):
         """Get plain password for automation"""
@@ -68,6 +71,16 @@ class User(Document):
     def set_password_plain(self, password):
         """Temporarily store plain password for automation"""
         self._linkedin_password_plain = password
+
+    def rotate_client_api_key(self):
+        """Rotate the desktop client API key."""
+        self.client_api_key = str(uuid.uuid4())
+        return self.client_api_key
+
+    def bump_linkedin_profile_version(self):
+        """Rotate the app-managed LinkedIn session version."""
+        self.linkedin_session_version = uuid.uuid4().hex
+        return self.linkedin_session_version
 
     def has_linkedin_setup(self):
         """Check if user has completed LinkedIn setup"""

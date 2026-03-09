@@ -19,6 +19,7 @@ from urllib.parse import urlparse
 import socket
 from mongoengine import connect
 from dotenv import load_dotenv
+load_dotenv()
 import google_services
 import google.oauth2.credentials
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -27,7 +28,7 @@ import hmac
 import hashlib
 from email_utils import send_password_reset_email
 # Load environment variables from .env file
-load_dotenv()
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -116,6 +117,26 @@ def linkedin_setup_required(f):
         return f(*args, **kwargs)
     decorated_function.__name__ = f.__name__
     return decorated_function
+
+
+def build_linkedin_user_config(user):
+    """Return dashboard-side LinkedIn credentials for the desktop client."""
+    profile_key = get_linkedin_profile_key(user)
+    return {
+        'linkedin_email': user.linkedin_email or '',
+        'linkedin_password': user.linkedin_password or '',
+        'linkedin_profile_key': profile_key
+    }
+
+
+def get_linkedin_profile_key(user):
+    """Return a stable profile key for the current LinkedIn account/session version."""
+    if not user or not user.linkedin_email or not user.linkedin_password:
+        return ''
+
+    session_version = getattr(user, 'linkedin_session_version', '') or 'legacy'
+    raw = f"{user.linkedin_email.strip().lower()}|{user.linkedin_password}|{session_version}"
+    return hashlib.sha256(raw.encode('utf-8')).hexdigest()
 
 
 
@@ -270,8 +291,14 @@ def api_client_bootstrap_auth():
     if not user.is_subscription_active():
         return jsonify({'error': 'Subscription inactive'}), 403
 
+    user_updated = False
     if not user.client_api_key:
-        user.client_api_key = str(uuid.uuid4())
+        user.rotate_client_api_key()
+        user_updated = True
+    if not getattr(user, 'linkedin_session_version', None):
+        user.bump_linkedin_profile_version()
+        user_updated = True
+    if user_updated:
         user.save()
 
     if client_id:
@@ -281,9 +308,12 @@ def api_client_bootstrap_auth():
             client_info={'bootstrap_auth': True}
         )
 
+    sync_state = build_linkedin_user_config(user)
     return jsonify({
         'success': True,
-        'client_api_key': user.client_api_key
+        'client_api_key': user.client_api_key,
+        'user_config': sync_state,
+        'linkedin_profile_key': sync_state['linkedin_profile_key']
     }), 200
 
 @application.route('/')
@@ -465,6 +495,7 @@ def reset_password(token):
         # Update password and clear the token
         try:
             user.set_password(password)
+            user.updated_at = datetime.utcnow()
             user.clear_reset_token()
         except Exception as e:
             logger.error(f"Failed to update password for reset token: {e}")
@@ -714,7 +745,7 @@ def contact():
 def settings():
     user = get_current_user()
     if not user.client_api_key:
-        user.client_api_key = str(uuid.uuid4())
+        user.rotate_client_api_key()
         user.save()
 
     if request.method == 'POST':
@@ -726,11 +757,18 @@ def settings():
                 flash("LinkedIn email and password are required.", "error")
                 return render_template('settings.html', user=user)
 
-            user.linkedin_email = linkedin_email
-            user.linkedin_password = linkedin_password
+            linkedin_changed = (
+                (user.linkedin_email or '') != linkedin_email or
+                (user.linkedin_password or '') != linkedin_password
+            )
+
+            if linkedin_changed:
+                user.set_linkedin_credentials(linkedin_email, linkedin_password)
+            else:
+                user.set_password_plain(linkedin_password)
+
             if not user.client_api_key:
-                user.client_api_key = str(uuid.uuid4())
-            user.set_password_plain(linkedin_password)
+                user.rotate_client_api_key()
             user.updated_at = datetime.utcnow()
             user.save()
 
@@ -1548,14 +1586,20 @@ def api_get_tasks():
         return error_response
 
     tasks = []
+    sync_state = build_linkedin_user_config(user)
     
     # Get new, long-running tasks from the database for this user ONLY
     db_tasks = Task.objects(user=user, status='queued').order_by('+created_at')
     for task in db_tasks:
+        task_params = dict(task.params or {})
+        task_user_config = dict(task_params.get('user_config') or {})
+        task_user_config.update(sync_state)
+        task_params['user_config'] = task_user_config
+        task_params['linkedin_profile_key'] = sync_state['linkedin_profile_key']
         tasks.append({
             'id': str(task.id),
             'type': task.task_type,
-            'params': task.params or {}
+            'params': task_params
         })
         task.status = 'processing'
         task.save()
@@ -2150,10 +2194,13 @@ def api_client_ping():
         # Update client status for monitoring
         client_manager.update_client_heartbeat(user_id, client_id, client_info)
         
+        sync_state = build_linkedin_user_config(user)
         return jsonify({
-            'success': True, 
+            'success': True,
             'server_time': datetime.utcnow().isoformat(),
-            'actions': []  # Always send an empty list now
+            'actions': [],  # Always send an empty list now
+            'user_config': sync_state,
+            'linkedin_profile_key': sync_state['linkedin_profile_key']
         })
     
     except Exception as e:

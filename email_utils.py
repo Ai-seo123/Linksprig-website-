@@ -2,7 +2,7 @@ import logging
 import os
 import smtplib
 from email.message import EmailMessage
-
+from email.utils import formatdate, make_msgid
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,8 @@ def send_password_reset_email(to_email: str, first_name: str, reset_url: str) ->
     msg["Subject"] = subject
     msg["From"] = f"{smtp_from_name} <{smtp_from_email}>"
     msg["To"] = to_email
+    msg["Date"] = formatdate(localtime=True)
+    msg["Message-ID"] = make_msgid(domain="linksprig.com")
     msg.set_content(text_body)
     msg.add_alternative(html_body, subtype="html")
 
