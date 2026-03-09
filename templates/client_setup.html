@@ -74,37 +74,6 @@
         margin-bottom: 0;
     }
 
-    /* API Key Box Styling */
-    .api-key-box {
-        background-color: #f8f9fa;
-        border: 1px dashed var(--color-border);
-        border-radius: 0.75rem;
-        padding: 1.5rem;
-        margin-top: 1.5rem;
-    }
-    html.dark .api-key-box {
-        background-color: #1a1d21;
-    }
-    .key-display-group {
-        display: flex;
-        gap: 0.5rem;
-        background: var(--color-background);
-        border: 1px solid var(--color-border);
-        padding: 0.5rem;
-        border-radius: 0.5rem;
-        margin-top: 0.5rem;
-    }
-    .api-key-text {
-        flex-grow: 1;
-        font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
-        font-size: 0.9rem;
-        color: var(--color-text);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        padding: 0.4rem;
-    }
-
     /* Right Column Action Zone */
     .action-zone {
         background-color: var(--color-background-secondary); /* slightly distinct bg */
@@ -154,7 +123,7 @@
                         <div class="step-number">4</div>
                         <div class="step-content">
                             <h6>Authenticate</h6>
-                            <p>Copy the <strong>API Key</strong> provided on this page and paste it into the application to link your account.</p>
+                            <p>Sign in with your dashboard email and password in the desktop app. The app securely fetches its access token automatically.</p>
                         </div>
                     </li>
                 </ul>
@@ -181,18 +150,6 @@
                     </button>
                     <div class="mt-2">
                         <small class="text-muted">macOS & Linux versions coming soon</small>
-                    </div>
-                </div>
-
-                <div class="api-key-box">
-                    <label class="small text-uppercase fw-bold text-muted mb-1">Your Unique API Key</label>
-                    <p class="small text-muted mb-2">Paste this into the desktop app.</p>
-                    
-                    <div class="key-display-group">
-                        <span class="api-key-text" id="api-key-display">{{ api_key or 'API_KEY_NOT_FOUND' }}</span>
-                        <button class="btn btn-light btn-sm border" onclick="copyToClipboard('#api-key-display')" title="Copy to clipboard">
-                            <i class="fas fa-copy"></i>
-                        </button>
                     </div>
                 </div>
 
@@ -229,15 +186,6 @@ function showAlert(type, message) {
     setTimeout(() => {
         $(alertDiv).fadeOut('slow', () => $(alertDiv).remove());
     }, 5000);
-}
-
-function copyToClipboard(elementId) {
-    const textToCopy = document.querySelector(elementId).innerText;
-    navigator.clipboard.writeText(textToCopy).then(() => {
-        showAlert('success', 'API Key copied to clipboard!');
-    }, (err) => {
-        showAlert('danger', 'Failed to copy text.');
-    });
 }
 
 function downloadClient() {

@@ -25,7 +25,12 @@ class User(Document):
     # LinkedIn Settings
     linkedin_email = StringField(max_length=120)
     linkedin_password = StringField(max_length=255)
-    gemini_api_key = StringField(max_length=255)
+    # AI Quota Tracking (Company Proxy)
+    ai_messages_today = IntField(default=0)
+    ai_quota_reset_date = DateTimeField()
+
+    client_api_key = StringField(max_length=255)
+    gemini_api_key = StringField(max_length=255)  # Keep for DB backwards compatibility
 
     # Password Reset
     password_reset_token = StringField()
@@ -48,11 +53,10 @@ class User(Document):
         """Check if password matches hash"""
         return check_password_hash(self.password_hash, password)
 
-    def set_linkedin_credentials(self, email, password, api_key):
-        """Set LinkedIn credentials and API key"""
+    def set_linkedin_credentials(self, email, password):
+        """Set LinkedIn credentials"""
         self.linkedin_email = email
         self.linkedin_password = password
-        self.gemini_api_key = api_key
         self._linkedin_password_plain = password
 
     def get_linkedin_password(self):
@@ -67,7 +71,7 @@ class User(Document):
 
     def has_linkedin_setup(self):
         """Check if user has completed LinkedIn setup"""
-        return bool(self.linkedin_email and self.linkedin_password and self.gemini_api_key)
+        return bool(self.linkedin_email and self.linkedin_password and self.client_api_key)
 
     def get_full_name(self):
         """Get user's full name"""
@@ -111,7 +115,9 @@ class User(Document):
             'last_name': self.last_name,
             'full_name': self.get_full_name(),
             'created_at': self.created_at.isoformat() if self.created_at else None,
-            'has_linkedin_setup': self.has_linkedin_setup()
+            'has_linkedin_setup': self.has_linkedin_setup(),
+            'ai_messages_today': self.ai_messages_today,
+            'subscription_status': self.subscription_status
         }
 
     def __repr__(self):

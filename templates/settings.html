@@ -34,14 +34,19 @@
             placeholder="Your LinkedIn password" required>
         </div>
 
+        
+
         <div class="mb-3">
-          <label for="gemini_api_key" class="form-label fw-bold">Gemini API Key</label>
-          <input type="text" id="gemini_api_key" name="gemini_api_key" class="form-control"
-            placeholder="Enter your Gemini API key for AI features" value="{{ user.gemini_api_key or '' }}" required>
-          <div class="form-text">
-            Required for AI-powered messaging and automation.
-            <a href="https://aistudio.google.com/apikey" target="_blank" style="color:#0a66c2;">Get your API key
-              here</a>.
+          <label class="form-label fw-bold"><i class="fas fa-robot text-primary me-2"></i>Daily AI Usage Quota</label>
+          <div class="progress" style="height: 20px;">
+            {% set limit = 25 if user.is_subscription_active() else 10 %}
+            {% set pct = ((user.ai_messages_today or 0) / limit * 100) | round %}
+            <div class="progress-bar {% if pct > 80 %}bg-danger{% else %}bg-success{% endif %}" role="progressbar"
+              style="width: {{ pct }}%;" aria-valuenow="{{ user.ai_messages_today }}" aria-valuemin="0"
+              aria-valuemax="{{ limit }}">{{ user.ai_messages_today or 0 }} / {{ limit }} Messages</div>
+          </div>
+          <div class="form-text mt-1 text-muted">
+            Free tier: 10 messages/day. Pro tier: 25 messages/day. Resets at midnight UTC.
           </div>
         </div>
 

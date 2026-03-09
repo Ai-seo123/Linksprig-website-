@@ -215,7 +215,6 @@ def client_setup():
     return render_template('client_setup.html',
                          user=user,
                          client_id=client_id, # This is the user ID
-                         api_key=user.gemini_api_key, # Pass the API key
                          client_status=client_status)
 
 # Add this new route for client status checking
@@ -238,7 +237,7 @@ def profile():
         'created_at': user.created_at.strftime('%B %d, %Y') if user.created_at else 'N/A',
         'linkedin_email': user.linkedin_email or 'Not Set',
         'has_linkedin_setup': user.has_linkedin_setup(),
-        'has_gemini_key': bool(user.gemini_api_key) # Just check if the key exists, don't display it
+        'has_client_key': bool(user.client_api_key) # Just check if the key exists, don't display it
     }
     
     return render_template('profile.html', user=user, user_data=user_data)
@@ -252,6 +251,40 @@ def api_client_status():
     user = get_current_user()
     status = client_manager.get_client_status(str(user.id))
     return jsonify(status)
+
+@application.route('/api/client/bootstrap-auth', methods=['POST'])
+def api_client_bootstrap_auth():
+    """Bootstrap desktop client auth using dashboard credentials."""
+    data = request.get_json() or {}
+    email = (data.get('email') or '').strip().lower()
+    password = (data.get('password') or '').strip()
+    client_id = (data.get('client_id') or '').strip()
+
+    if not email or not password:
+        return jsonify({'error': 'Email and password are required'}), 400
+
+    user = User.objects(email=email).first()
+    if not user or not user.check_password(password):
+        return jsonify({'error': 'Invalid email or password'}), 401
+
+    if not user.is_subscription_active():
+        return jsonify({'error': 'Subscription inactive'}), 403
+
+    if not user.client_api_key:
+        user.client_api_key = str(uuid.uuid4())
+        user.save()
+
+    if client_id:
+        client_manager.update_client_heartbeat(
+            user_id=str(user.id),
+            client_id=client_id,
+            client_info={'bootstrap_auth': True}
+        )
+
+    return jsonify({
+        'success': True,
+        'client_api_key': user.client_api_key
+    }), 200
 
 @application.route('/')
 def landing():
@@ -596,14 +629,13 @@ def trigger_network_sync():
         task = Task(
             user=user,
             task_type='sync_network_stats',
-            params={
-                'task_id': str(uuid.uuid4()),
-                'user_config': {
-                    'linkedin_email': user.linkedin_email,
-                    'linkedin_password': user.linkedin_password,
-                    'gemini_api_key': user.gemini_api_key
-                }
-            },
+                params={
+                    'task_id': str(uuid.uuid4()),
+                    'user_config': {
+                        'linkedin_email': user.linkedin_email,
+                        'linkedin_password': user.linkedin_password
+                    }
+                },
             status='queued'
         )
         task.save()
@@ -681,22 +713,23 @@ def contact():
 @subscription_required
 def settings():
     user = get_current_user()
+    if not user.client_api_key:
+        user.client_api_key = str(uuid.uuid4())
+        user.save()
 
     if request.method == 'POST':
         try:
             linkedin_email = request.form.get('linkedin_email', '').strip()
             linkedin_password = request.form.get('linkedin_password', '').strip()
-            gemini_api_key = request.form.get('gemini_api_key', '').strip()
-
-            # Check all required
-            if not all([linkedin_email, linkedin_password, gemini_api_key]):
-                flash("All fields are required.", "error")
+            
+            if not all([linkedin_email, linkedin_password]):
+                flash("LinkedIn email and password are required.", "error")
                 return render_template('settings.html', user=user)
 
-            # Update user settings
             user.linkedin_email = linkedin_email
             user.linkedin_password = linkedin_password
-            user.gemini_api_key = gemini_api_key
+            if not user.client_api_key:
+                user.client_api_key = str(uuid.uuid4())
             user.set_password_plain(linkedin_password)
             user.updated_at = datetime.utcnow()
             user.save()
@@ -725,8 +758,8 @@ def ai_handler():
             
             # Configure Gemini AI
             import google.generativeai as genai
-            genai.configure(api_key=user.gemini_api_key)
-            model = genai.GenerativeModel('gemini-pro')
+            genai.configure(api_key=os.environ.get('COMPANY_GEMINI_API_KEY'))
+            model = genai.GenerativeModel('gemini-2.5-flash')
             
             # Generate response
             response = model.generate_content(
@@ -764,8 +797,8 @@ def api_generate_message():
         
         # Configure Gemini AI
         import google.generativeai as genai
-        genai.configure(api_key=user.gemini_api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        genai.configure(api_key=os.environ.get('COMPANY_GEMINI_API_KEY'))
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         # Build context for AI
         name = contact.get('Name', 'Professional')
@@ -858,8 +891,8 @@ def api_preview_campaign_messages():
         
         # Configure Gemini AI
         import google.generativeai as genai
-        genai.configure(api_key=user.gemini_api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        genai.configure(api_key=os.environ.get('COMPANY_GEMINI_API_KEY'))
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         previews = []
         
@@ -1021,8 +1054,8 @@ def handle_campaign_preview(user):
         
         # Generate previews (call internal API)
         import google.generativeai as genai
-        genai.configure(api_key=user.gemini_api_key)
-        model = genai.GenerativeModel('gemini-1.5-flash')
+        genai.configure(api_key=os.environ.get('COMPANY_GEMINI_API_KEY'))
+        model = genai.GenerativeModel('gemini-2.5-flash')
         
         previews = []
         for i, contact in enumerate(campaign_data['contacts'][:preview_count]):
@@ -1078,15 +1111,14 @@ def handle_campaign_start(user):
         task = Task(
             user=user,
             task_type='outreach_campaign',
-            params={
-                'campaign_id': campaign_data['campaign_id'],
-                'campaign_data': campaign_data,
-                'user_config': {
-                    'linkedin_email': user.linkedin_email,
-                    'linkedin_password': user.linkedin_password,
-                    'gemini_api_key': user.gemini_api_key
-                }
-            },
+                params={
+                    'campaign_id': campaign_data['campaign_id'],
+                    'campaign_data': campaign_data,
+                    'user_config': {
+                        'linkedin_email': user.linkedin_email,
+                        'linkedin_password': user.linkedin_password
+                    }
+                },
             status='queued'
         )
         task.save()
@@ -1274,15 +1306,14 @@ def start_campaign():
         task = Task(
             user=user,
             task_type='outreach_campaign',
-            params={
-                'campaign_id': campaign_data['campaign_id'],
-                'campaign_data': campaign_data,
-                'user_config': {
-                    'linkedin_email': user.linkedin_email,
-                    'linkedin_password': user.linkedin_password,
-                    'gemini_api_key': user.gemini_api_key
-                }
-            },
+                params={
+                    'campaign_id': campaign_data['campaign_id'],
+                    'campaign_data': campaign_data,
+                    'user_config': {
+                        'linkedin_email': user.linkedin_email,
+                        'linkedin_password': user.linkedin_password
+                    }
+                },
             status='queued'
         )
         task.save()
@@ -1401,8 +1432,7 @@ def keyword_search():
                     'search_id': str(uuid.uuid4()),
                     'user_config': {
                         'linkedin_email': user.linkedin_email,
-                        'linkedin_password': user.linkedin_password,
-                        'gemini_api_key': user.gemini_api_key
+                        'linkedin_password': user.linkedin_password
                     },
                     'search_params': {'keywords': search_keywords,
                                        'max_invites': max_invites,
@@ -1465,20 +1495,57 @@ def preview_message():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
     
+
+@application.route('/api/client/ai/generate', methods=['POST'])
+def api_client_ai_generate():
+    user, error_response = get_api_user_or_error()
+    if error_response:
+        return error_response
+
+    data = request.json or {}
+    prompt = data.get('prompt')
+    if not prompt:
+        return jsonify({'error': 'Missing prompt'}), 400
+
+    # Quota check
+    today_start = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+    if not user.ai_quota_reset_date or user.ai_quota_reset_date < today_start:
+        user.ai_messages_today = 0
+        user.ai_quota_reset_date = today_start
+        user.save()
+
+    daily_limit = 25 if user.is_subscription_active() else 10
+    if user.ai_messages_today >= daily_limit:
+        return jsonify({'error': 'Daily AI quota exceeded', 'quota_exceeded': True}), 429
+
+    company_key = os.environ.get('COMPANY_GEMINI_API_KEY')
+    if not company_key:
+        return jsonify({'error': 'Server missing COMPANY_GEMINI_API_KEY'}), 500
+
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=company_key)
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        response = model.generate_content(prompt)
+        text = response.text.strip()
+        
+        # Increment quota
+        user.ai_messages_today += 1
+        user.save()
+        
+        return jsonify({'success': True, 'message': text, 'messages_today': user.ai_messages_today, 'daily_limit': daily_limit})
+    except Exception as e:
+        logger.error(f"AI Generation error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @application.route('/api/get-tasks', methods=['POST'])
 def api_get_tasks():
     """
     Client polling endpoint - serves only long-running tasks from the database.
     """
-    auth = request.headers.get('Authorization', '')
-    api_key = auth.replace('Bearer ', '').strip() if auth.startswith('Bearer ') else None
-    
-    if not api_key:
-        return jsonify({'error': 'Missing API key'}), 401
-
-    user = User.objects(gemini_api_key=api_key).first()
-    if not user:
-        return jsonify({'error': 'Invalid API key'}), 403
+    user, error_response = get_api_user_or_error()
+    if error_response:
+        return error_response
 
     tasks = []
     
@@ -1506,15 +1573,9 @@ def api_report_task():
     and final task results (which persist and close the task).
     """
     try:
-        auth = request.headers.get('Authorization', '')
-        api_key = auth.replace('Bearer ', '').strip() if auth.startswith('Bearer ') else None
-        
-        if not api_key:
-            return jsonify({'error': 'Missing API key'}), 401
-
-        user = User.objects(gemini_api_key=api_key).first()
-        if not user:
-            return jsonify({'error': 'Invalid API key'}), 403
+        user, error_response = get_api_user_or_error()
+        if error_response:
+            return error_response
 
         data = request.json or {}
         
@@ -1588,16 +1649,31 @@ def api_report_task():
         logger.error(f"api_report_task error: {e}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
-def get_user_from_api_key():
-    """Authenticates a user from the 'Authorization: Bearer <key>' header."""
+def _get_bearer_api_key():
+    """Return bearer token from Authorization header, if present."""
     auth = request.headers.get('Authorization', '')
-    api_key = auth.replace('Bearer ', '').strip() if auth.startswith('Bearer ') else None
-    
+    if not auth.startswith('Bearer '):
+        return None
+    token = auth.replace('Bearer ', '', 1).strip()
+    return token or None
+
+def get_user_from_api_key():
+    """Authenticate a user from Authorization header using client_api_key only."""
+    api_key = _get_bearer_api_key()
     if not api_key:
         return None
-    
-    user = User.objects(gemini_api_key=api_key).first()
-    return user
+    return User.objects(client_api_key=api_key).first()
+
+def get_api_user_or_error():
+    """Return (user, error_response)."""
+    api_key = _get_bearer_api_key()
+    if not api_key:
+        return None, (jsonify({'error': 'Missing API key'}), 401)
+
+    user = User.objects(client_api_key=api_key).first()
+    if not user:
+        return None, (jsonify({'error': 'Invalid API key'}), 403)
+    return user, None
 
 @application.route('/api/google/free-slots', methods=['GET'])
 def api_google_free_slots():
@@ -1803,7 +1879,7 @@ def api_dashboard_status():
         user_has_setup = all([
             getattr(user, 'linkedin_email', None),
             getattr(user, 'linkedin_password', None),
-            getattr(user, 'gemini_api_key', None)
+            getattr(user, 'client_api_key', None)
         ])
 
     features_available = {
@@ -1826,17 +1902,9 @@ def api_inbox_results():
     """
     Clients report task results here.
     """
-    auth = request.headers.get('Authorization', '')
-    api_key = None
-    if auth.startswith('Bearer '):
-        api_key = auth.replace('Bearer ', '').strip()
-    
-    if not api_key:
-        return jsonify({'error': 'Missing API key'}), 401
-
-    user = User.objects(gemini_api_key=api_key).first()
-    if not user:
-        return jsonify({'error': 'Invalid API key'}), 403
+    user, error_response = get_api_user_or_error()
+    if error_response:
+        return error_response
 
     payload = request.get_json() or {}
     task_id = payload.get('process_id') or payload.get('task_id')
@@ -1880,8 +1948,7 @@ def ai_inbox():
                     'process_id': process_id,
                     'user_config': {
                         'linkedin_email': user.linkedin_email,
-                        'linkedin_password': user.linkedin_password,
-                        'gemini_api_key': user.gemini_api_key
+                        'linkedin_password': user.linkedin_password
                     }
                 },
                 status='queued'
@@ -1979,12 +2046,9 @@ def api_inbox_preview():
     Receives an inbox preview from a client and stores it server-side.
     """
     try:
-        # Authenticate the client via API key
-        auth_header = request.headers.get('Authorization', '')
-        api_key = auth_header.replace('Bearer ', '').strip() if auth_header.startswith('Bearer ') else None
-        user = User.objects(gemini_api_key=api_key).first()
-        if not user:
-            return jsonify({'error': 'Invalid API key'}), 403
+        user, error_response = get_api_user_or_error()
+        if error_response:
+            return error_response
 
         data = request.json or {}
         session_id = data.get('session_id')
@@ -2054,15 +2118,9 @@ def get_inbox_results(process_id):
 def api_client_ping():
     """Client heartbeat endpoint."""
     try:
-        auth = request.headers.get('Authorization', '')
-        api_key = auth.replace('Bearer ', '').strip() if auth.startswith('Bearer ') else None
-        
-        if not api_key:
-            return jsonify({'error': 'Missing API key'}), 401
-
-        user = User.objects(gemini_api_key=api_key).first()
-        if not user:
-            return jsonify({'error': 'Invalid API key'}), 403
+        user, error_response = get_api_user_or_error()
+        if error_response:
+            return error_response
 
         user_id = str(user.id)
         
@@ -2148,11 +2206,9 @@ def receive_campaign_progress():
         if not auth_header.startswith('Bearer '):
             return jsonify({'error': 'Missing or invalid Authorization header'}), 401
             
-        api_key = auth_header.replace('Bearer ', '').strip()
-        user = User.objects(gemini_api_key=api_key).first()
-        
-        if not user:
-            return jsonify({'error': 'Invalid API key'}), 403
+        user, error_response = get_api_user_or_error()
+        if error_response:
+            return error_response
 
         data = request.json
         campaign_id = data.get('campaign_id')
@@ -2472,8 +2528,7 @@ def start_sales_nav_campaign():
             },
             'user_config': {
                 'linkedin_email': user.linkedin_email,
-                'linkedin_password': user.linkedin_password,
-                'gemini_api_key': user.gemini_api_key
+                'linkedin_password': user.linkedin_password
             }
         },
         status='queued'
