@@ -4,19 +4,25 @@ let campaignId = null;
 let statusCheckInterval = null;
 let previewModal = null;
 let currentContactData = null;
+let campaignCanStart = true;
+let campaignStage = '';
 
-function initializeCampaign(cId) {
+function initializeCampaign(cId, options = {}) {
     campaignId = cId;
     console.log('Initializing campaign:', campaignId);
+    const autoStartStatus = options.autoStartStatus !== false;
+    campaignCanStart = options.allowStart !== false;
+    campaignStage = options.stage || '';
     
     // Initialize modal
     previewModal = new bootstrap.Modal(document.getElementById('messagePreviewModal'));
     
     // Add event listeners
     setupEventListeners();
+    renderCampaignControls(campaignStage || (autoStartStatus ? 'running' : 'uploaded'));
     
     // Start status checking if campaign is active
-    if (campaignId) {
+    if (campaignId && autoStartStatus) {
         startStatusChecking();
     }
 }
@@ -31,7 +37,12 @@ function setupEventListeners() {
     // Stop campaign button
     const stopBtn = document.getElementById('stop-campaign');
     if (stopBtn) {
-        stopBtn.addEventListener('click', stopCampaign);
+        stopBtn.addEventListener('click', () => stopCampaign());
+    }
+
+    const exitBtn = document.getElementById('exit-campaign');
+    if (exitBtn) {
+        exitBtn.addEventListener('click', exitCampaign);
     }
     
     // Modal action buttons
@@ -77,7 +88,7 @@ function startCampaign() {
     const startBtn = document.getElementById('start-campaign');
     if (startBtn) {
         startBtn.disabled = true;
-        startBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Starting...';
+        startBtn.innerHTML = `<i class="fas fa-spinner fa-spin me-2"></i>${campaignStage === 'uploaded' ? 'Starting...' : 'Resuming...'}`;
     }
     
     fetch('/start_campaign', {
@@ -91,31 +102,22 @@ function startCampaign() {
     .then(data => {
         if (data.success) {
             showAlert('Campaign started successfully! The client will begin processing contacts.', 'success');
+            campaignStage = 'running';
             
-            // Update UI
-            document.getElementById('start-campaign').style.display = 'none';
-            document.getElementById('stop-campaign').style.display = 'inline-block';
+            renderCampaignControls('running');
             document.getElementById('campaign-status').style.display = 'block';
             
             // Start status checking
             startStatusChecking();
         } else {
             showAlert(data.error || 'Failed to start campaign', 'error');
-            // Reset button
-            if (startBtn) {
-                startBtn.disabled = false;
-                startBtn.innerHTML = '<i class="fas fa-play-circle me-2"></i>Start Campaign';
-            }
+            renderCampaignControls(campaignStage || 'uploaded');
         }
     })
     .catch(error => {
         console.error('Error starting campaign:', error);
         showAlert('Error starting campaign: ' + error.message, 'error');
-        // Reset button
-        if (startBtn) {
-            startBtn.disabled = false;
-            startBtn.innerHTML = '<i class="fas fa-play-circle me-2"></i>Start Campaign';
-        }
+        renderCampaignControls(campaignStage || 'uploaded');
     });
 }
 
@@ -149,7 +151,9 @@ function stopCampaign() {
 
                 // Reset UI to idle state
                 const startBtn = document.getElementById('start-campaign');
-                if (startBtn) startBtn.style.display = 'inline-block';
+                if (startBtn) {
+                    startBtn.style.display = campaignCanStart ? 'inline-block' : 'none';
+                }
                 if (stopBtn) stopBtn.style.display = 'none';
                 document.getElementById('status-badge').innerHTML = '⏹️ Stopped';
             } else {
@@ -168,6 +172,128 @@ function stopCampaign() {
         });
 }
 
+
+function getStartButtonLabel(stage = campaignStage) {
+    return stage === 'uploaded' ? 'Start Campaign' : 'Resume Campaign';
+}
+
+function renderCampaignControls(stage) {
+    campaignStage = stage || campaignStage;
+
+    const startBtn = document.getElementById('start-campaign');
+    const stopBtn = document.getElementById('stop-campaign');
+    const exitBtn = document.getElementById('exit-campaign');
+
+    if (startBtn) {
+        startBtn.disabled = false;
+        startBtn.innerHTML = `<i class="fas fa-play-circle me-2"></i>${getStartButtonLabel(campaignStage)}`;
+        startBtn.style.display = (campaignCanStart && campaignStage !== 'running' && campaignStage !== 'completed') ? 'inline-block' : 'none';
+    }
+
+    if (stopBtn) {
+        stopBtn.disabled = false;
+        stopBtn.innerHTML = '<i class="fas fa-stop-circle me-2"></i>Stop Campaign';
+        stopBtn.style.display = campaignStage === 'running' ? 'inline-block' : 'none';
+    }
+
+    if (exitBtn) {
+        exitBtn.disabled = false;
+        exitBtn.innerHTML = '<i class="fas fa-right-from-bracket me-2"></i>Exit';
+        exitBtn.style.display = campaignStage === 'running' ? 'none' : 'inline-block';
+    }
+}
+
+function updateStatusBadge(status) {
+    const statusBadge = document.getElementById('status-badge');
+    if (!statusBadge) return;
+
+    const statusText = status.charAt(0).toUpperCase() + status.slice(1);
+    const statusEmojis = {
+        'running': 'ðŸš€',
+        'completed': 'âœ…',
+        'stopped': 'â¹ï¸',
+        'failed': 'âŒ',
+        'paused': 'â¸ï¸'
+    };
+
+    statusBadge.innerHTML = `${statusEmojis[status.toLowerCase()] || 'ðŸ“Š'} ${statusText}`;
+    statusBadge.className = `badge bg-${getStatusColor(status)}`;
+}
+
+updateStatusBadge = function (status) {
+    const statusBadge = document.getElementById('status-badge');
+    if (!statusBadge) return;
+
+    const statusText = status.charAt(0).toUpperCase() + status.slice(1);
+    statusBadge.textContent = statusText;
+    statusBadge.className = `badge bg-${getStatusColor(status)}`;
+}
+
+function exitCampaign() {
+    const exitBtn = document.getElementById('exit-campaign');
+    if (exitBtn) {
+        exitBtn.disabled = true;
+        exitBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Exiting...';
+    }
+
+    fetch('/exit_campaign', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        }
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                window.location.href = data.redirect_url || '/outreach';
+            } else {
+                showAlert(data.error || 'Failed to exit campaign.', 'error');
+                renderCampaignControls(campaignStage);
+            }
+        })
+        .catch(error => {
+            console.error('Error exiting campaign:', error);
+            showAlert('Error exiting campaign: ' + error.message, 'error');
+            renderCampaignControls(campaignStage);
+        });
+}
+
+stopCampaign = function () {
+    if (!campaignId) return;
+
+    const stopBtn = document.getElementById('stop-campaign');
+    if (stopBtn) {
+        stopBtn.disabled = true;
+        stopBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Stopping...';
+    }
+
+    if (!confirm("Are you sure you want to stop this campaign?")) {
+        renderCampaignControls(campaignStage || 'running');
+        return;
+    }
+
+    fetch(`/stop_task/${campaignId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' }
+    })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showAlert('Campaign stopped successfully!', 'info');
+                stopStatusChecking();
+                renderCampaignControls('stopped');
+                updateStatusBadge('stopped');
+            } else {
+                showAlert(data.message || 'Failed to stop campaign.', 'error');
+                renderCampaignControls(campaignStage || 'running');
+            }
+        })
+        .catch(error => {
+            console.error('Error stopping campaign:', error);
+            showAlert('Network error while stopping campaign: ' + error.message, 'error');
+            renderCampaignControls(campaignStage || 'running');
+        });
+}
 
 function startStatusChecking() {
     if (statusCheckInterval) {
@@ -299,6 +425,73 @@ function updateCampaignUI(data) {
             showAlert(completionMessages[data.status], 
                      data.status === 'completed' ? 'success' : 
                      data.status === 'stopped' ? 'warning' : 'danger');
+        }
+    }
+}
+
+updateCampaignUI = function (data) {
+    updateCounterAnimated('successful-count', data.successful || 0);
+    updateCounterAnimated('failed-count', data.failed || 0);
+    updateCounterAnimated('skipped-count', data.skipped || 0);
+    updateCounterAnimated('already-messaged-count', data.already_messaged || 0);
+
+    const progress = data.progress || 0;
+    const total = data.total || 0;
+    const percentage = total > 0 ? (progress / total) * 100 : 0;
+
+    const progressBar = document.getElementById('progress-bar');
+    if (progressBar) {
+        progressBar.style.width = `${percentage}%`;
+        progressBar.setAttribute('aria-valuenow', percentage);
+    }
+
+    updateElement('progress-current', progress);
+    updateElement('progress-total', total);
+
+    const status = data.status || 'running';
+    campaignStage = status;
+    updateStatusBadge(status);
+
+    const activityDiv = document.getElementById('current-activity');
+    const activityText = document.getElementById('activity-text');
+
+    if (data.awaiting_confirmation && data.current_contact_preview) {
+        if (activityDiv) activityDiv.style.display = 'block';
+        if (activityText) {
+            const contact = data.current_contact_preview.contact || {};
+            activityText.innerHTML = `
+                <i class="fas fa-user-check me-2"></i>
+                Awaiting your decision for <strong>${contact.Name || 'contact'}</strong>...
+            `;
+        }
+    } else if (status === 'running') {
+        if (activityDiv) activityDiv.style.display = 'block';
+        if (activityText) {
+            activityText.innerHTML = `
+                <i class="fas fa-cogs me-2"></i>
+                Processing contacts... ${progress}/${total}
+            `;
+        }
+    } else {
+        if (activityDiv) activityDiv.style.display = 'none';
+    }
+
+    if (['completed', 'stopped', 'failed'].includes(status)) {
+        stopStatusChecking();
+        renderCampaignControls(status);
+
+        const completionMessages = {
+            'completed': `Campaign completed. Processed ${progress}/${total} contacts.`,
+            'stopped': `Campaign stopped at ${progress}/${total} contacts.`,
+            'failed': `Campaign failed at ${progress}/${total} contacts.`
+        };
+
+        if (completionMessages[status]) {
+            showAlert(
+                completionMessages[status],
+                status === 'completed' ? 'success' :
+                status === 'stopped' ? 'warning' : 'danger'
+            );
         }
     }
 }

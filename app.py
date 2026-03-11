@@ -703,10 +703,22 @@ def stop_task(task_id):
         task.save()
         
         logger.info(f"✅ Queued persistent 'stop_task' for task {task_id}")
+        current_campaign = session.get('current_campaign')
+        if current_campaign and current_campaign.get('campaign_id') == task_id:
+            current_campaign['stage'] = 'stopped'
+            session['current_campaign'] = current_campaign
+
         return jsonify({'success': True, 'message': 'Stop request queued for client.'})
     except Exception as e:
         logger.error(f"Error sending stop request for {task_id}: {e}")
         return jsonify({'success': False, 'message': str(e)}), 500
+
+@application.route('/exit_campaign', methods=['POST'])
+@login_required
+@subscription_required
+def exit_campaign():
+    session.pop('current_campaign', None)
+    return jsonify({'success': True, 'redirect_url': url_for('outreach')})
 
 @application.route('/get-started')
 def get_started():
@@ -999,6 +1011,12 @@ Keep under 280 characters, use first name only, be professional and genuine."""
 @subscription_required
 def outreach():
     user = get_current_user()
+    campaign_data = session.get('current_campaign')
+    if campaign_data:
+        campaign_status = campaign_results.get(campaign_data.get('campaign_id'), {}).get('status')
+        if campaign_status in {'running', 'stopped', 'completed', 'failed'}:
+            campaign_data['stage'] = campaign_status
+            session['current_campaign'] = campaign_data
     
     if request.method == 'POST':
         try:
@@ -1015,9 +1033,9 @@ def outreach():
             
         except Exception as e:
             flash(f'Error: {str(e)}', 'error')
-            return render_template('outreach.html', user=user)
+            return render_template('outreach.html', user=user, campaign_data=campaign_data)
     
-    return render_template('outreach.html', user=user)
+    return render_template('outreach.html', user=user, campaign_data=campaign_data)
 
 def handle_file_upload(user):
     """Handle CSV file upload"""
@@ -1057,6 +1075,7 @@ def handle_file_upload(user):
             'total_contacts': len(df),
             'contacts': df.to_dict('records')[:max_contacts],
             'campaign_id': str(uuid.uuid4()),
+            'campaign_type': 'csv',
             'stage': 'uploaded'  # Track campaign stage
         }
 
@@ -1317,7 +1336,9 @@ def create_campaign_from_selection():
             'max_contacts': len(selected_contacts),
             'total_contacts': len(selected_contacts),
             'contacts': selected_contacts,
-            'campaign_id': str(uuid.uuid4())
+            'campaign_id': str(uuid.uuid4()),
+            'campaign_type': 'csv',
+            'stage': 'uploaded'
         }
         session['current_campaign'] = campaign_data
         
@@ -1358,6 +1379,10 @@ def start_campaign():
         
         logger.info(f"✅ Queued task {task.id} for user {user.email}")
         
+        campaign_data['stage'] = 'running'
+        campaign_data['task_id'] = str(task.id)
+        session['current_campaign'] = campaign_data
+
         return jsonify({
             'success': True, 
             'message': 'Campaign has been queued for the client.',
@@ -1603,6 +1628,10 @@ def api_get_tasks():
         })
         task.status = 'processing'
         task.save()
+        current_campaign = session.get('current_campaign')
+        if current_campaign and current_campaign.get('campaign_id') == task_id:
+            current_campaign['stage'] = 'stopped'
+            session['current_campaign'] = current_campaign
     
     if not tasks:
         return ('', 204)  # No Content - No tasks available
@@ -2519,18 +2548,17 @@ sales_nav_lists_cache = {}
 @subscription_required
 def fetch_sales_nav_lists():
     user = get_current_user()
-    task_id = str(uuid.uuid4())
     
     # Create task for client
     task = Task(
         user=user,
         task_type='fetch_sales_nav_lists',
-        params={'task_id': task_id},
+        params={},
         status='queued'
     )
     task.save()
     
-    return jsonify({'success': True, 'task_id': task_id, 'message': 'Fetching lists from Sales Navigator...'})
+    return jsonify({'success': True, 'task_id': str(task.id), 'message': 'Fetching lists from Sales Navigator...'})
 
 @application.route('/get_sales_nav_lists/<task_id>')
 @login_required
@@ -2540,10 +2568,16 @@ def get_sales_nav_lists(task_id):
     try:
         task = Task.objects.get(id=task_id)
         if task.status == 'completed' and task.result:
-            lists = task.result.get('payload', {}).get('lists', [])
+            lists = task.result.get('lists', [])
             return jsonify({'success': True, 'completed': True, 'lists': lists})
         elif task.status == 'failed':
-            return jsonify({'success': False, 'completed': True, 'error': task.error})
+            payload = task.result or {}
+            return jsonify({
+                'success': False,
+                'completed': True,
+                'error': task.error,
+                'stopped': payload.get('stopped', False)
+            })
         else:
             return jsonify({'success': True, 'completed': False})
     except Exception as e:
@@ -2581,6 +2615,15 @@ def start_sales_nav_campaign():
         status='queued'
     )
     task.save()
+    session['current_campaign'] = {
+        'campaign_id': campaign_id,
+        'campaign_type': 'sales_nav',
+        'stage': 'running',
+        'max_contacts': int(max_contacts),
+        'total_contacts': int(max_contacts),
+        'contacts': [],
+        'task_id': str(task.id)
+    }
     
     # Initialize result cache
     campaign_results[campaign_id] = {'status': 'initializing'}

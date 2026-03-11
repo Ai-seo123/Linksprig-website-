@@ -99,9 +99,14 @@
                     </div>
 
                     <div id="fetch-section" class="text-center py-4">
-                        <button id="btn-fetch-lists" class="btn btn-primary btn-lg">
-                            <i class="fas fa-sync-alt me-2"></i>Fetch Saved Lists from Sales Nav
-                        </button>
+                        <div class="d-flex justify-content-center gap-3">
+                            <button id="btn-fetch-lists" class="btn btn-primary btn-lg">
+                                <i class="fas fa-sync-alt me-2"></i>Fetch Saved Lists from Sales Nav
+                            </button>
+                            <button id="btn-stop-fetch-lists" class="btn btn-danger btn-lg" style="display:none;">
+                                <i class="fas fa-stop-circle me-2"></i>Stop
+                            </button>
+                        </div>
                         <div id="fetch-spinner" class="mt-3" style="display:none;">
                             <div class="spinner-border text-primary" role="status"></div>
                             <p class="mt-2 text-muted">Navigating to Sales Navigator to find your lists...<br>This may
@@ -142,18 +147,33 @@
                     <div class="alert alert-success mb-0 shadow-sm d-flex align-items-center">
                         <i class="fas fa-check-circle fa-lg me-3"></i>
                         <div>
+                            {% if campaign_data.stage != 'running' %}
+                            Campaign Ready.<br />
+                            Prepared <b>{{ campaign_data.max_contacts }}</b> contacts and waiting to start.
+                            {% else %}
                             Campaign Active.<br />
                             Processing up to <b>{{ campaign_data.max_contacts }}</b> contacts.
+                            {% endif %}
                         </div>
                     </div>
                 </div>
-                <div class="col-lg-4 text-end">
-                    <button id="start-campaign" class="btn btn-success shadow-sm btn-lg" style="display:none;">
-                        <i class="fas fa-play-circle me-2"></i>Resume
-                    </button>
-                    <button id="stop-campaign" class="btn btn-danger shadow-sm btn-lg">
-                        <i class="fas fa-stop-circle me-2"></i>Stop Campaign
-                    </button>
+                <div class="col-lg-4">
+                    <div class="d-flex justify-content-end gap-2">
+                        <button id="start-campaign" class="btn btn-success shadow-sm btn-lg" {% if campaign_data.stage
+                            in ['running', 'completed' ] or campaign_data.campaign_type !='csv' %}style="display:none;"
+                            {% endif %}>
+                            <i class="fas fa-play-circle me-2"></i>{% if campaign_data.stage == 'uploaded' %}Start
+                            Campaign{% else %}Resume Campaign{% endif %}
+                        </button>
+                        <button id="stop-campaign" class="btn btn-danger shadow-sm btn-lg" {% if campaign_data.stage
+                            !='running' %}style="display:none;" {% endif %}>
+                            <i class="fas fa-stop-circle me-2"></i>Stop Campaign
+                        </button>
+                        <button id="exit-campaign" class="btn btn-outline-danger shadow-sm btn-lg" {% if
+                            campaign_data.stage=='running' %}style="display:none;" {% endif %}>
+                            <i class="fas fa-right-from-bracket me-2"></i>Exit
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -300,8 +320,14 @@
     // 1. Initialize Existing Campaign Logic
     if (typeof initializeCampaign !== 'undefined') {
         const campaignId = '{{ campaign_data.campaign_id if campaign_data else "" }}';
+        const campaignStage = '{{ campaign_data.stage if campaign_data else "" }}';
+        const campaignType = '{{ campaign_data.campaign_type if campaign_data else "" }}';
         if (campaignId) {
-            initializeCampaign(campaignId);
+            initializeCampaign(campaignId, {
+                autoStartStatus: campaignStage === 'running',
+                allowStart: campaignType === 'csv',
+                stage: campaignStage
+            });
             document.getElementById('campaign-status').style.display = 'block';
         }
     }
@@ -311,22 +337,31 @@
         const fetchBtn = document.getElementById('btn-fetch-lists');
         // Check if element exists (only on the "new campaign" view)
         if (fetchBtn) {
+            const stopFetchBtn = document.getElementById('btn-stop-fetch-lists');
             const spinner = document.getElementById('fetch-spinner');
             const listContainer = document.getElementById('sales-nav-lists-container');
             const selectionSection = document.getElementById('lists-selection-section');
             const startBtn = document.getElementById('btn-start-sn-campaign');
             let selectedListUrl = null;
+            let currentFetchTaskId = null;
+            let fetchPollInterval = null;
 
             // Fetch Lists Button Click
             fetchBtn.addEventListener('click', function () {
                 fetchBtn.disabled = true;
                 spinner.style.display = 'block';
                 selectionSection.style.display = 'none';
+                if (stopFetchBtn) {
+                    stopFetchBtn.style.display = 'inline-block';
+                    stopFetchBtn.disabled = false;
+                    stopFetchBtn.innerHTML = '<i class="fas fa-stop-circle me-2"></i>Stop';
+                }
 
                 fetch('/fetch_sales_nav_lists', { method: 'POST' })
                     .then(r => r.json())
                     .then(data => {
                         if (data.success) {
+                            currentFetchTaskId = data.task_id;
                             pollForLists(data.task_id);
                         } else {
                             alert('Error starting fetch: ' + data.message);
@@ -341,15 +376,21 @@
 
             // Poll for list results
             function pollForLists(taskId) {
-                const interval = setInterval(() => {
+                if (fetchPollInterval) {
+                    clearInterval(fetchPollInterval);
+                }
+                fetchPollInterval = setInterval(() => {
                     fetch(`/get_sales_nav_lists/${taskId}`)
                         .then(r => r.json())
                         .then(data => {
                             if (data.completed) {
-                                clearInterval(interval);
+                                clearInterval(fetchPollInterval);
+                                fetchPollInterval = null;
                                 resetFetchUI();
                                 if (data.success && data.lists && data.lists.length > 0) {
                                     renderLists(data.lists);
+                                } else if (data.stopped) {
+                                    alert('Fetching Sales Nav lists was stopped.');
                                 } else {
                                     alert('No lists found or error: ' + (data.error || 'Unknown'));
                                 }
@@ -359,8 +400,45 @@
             }
 
             function resetFetchUI() {
+                currentFetchTaskId = null;
                 fetchBtn.disabled = false;
                 spinner.style.display = 'none';
+                if (stopFetchBtn) {
+                    stopFetchBtn.style.display = 'none';
+                    stopFetchBtn.disabled = false;
+                    stopFetchBtn.innerHTML = '<i class="fas fa-stop-circle me-2"></i>Stop';
+                }
+            }
+
+            if (stopFetchBtn) {
+                stopFetchBtn.addEventListener('click', function () {
+                    if (!currentFetchTaskId) {
+                        return;
+                    }
+
+                    stopFetchBtn.disabled = true;
+                    stopFetchBtn.innerHTML = '<i class="fas fa-spinner fa-spin me-2"></i>Stopping...';
+
+                    fetch(`/stop_task/${currentFetchTaskId}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' }
+                    })
+                        .then(r => r.json())
+                        .then(data => {
+                            if (data.success) {
+                                window.location.href = '/outreach';
+                            } else {
+                                alert('Failed to stop fetch: ' + (data.message || 'Unknown error'));
+                                stopFetchBtn.disabled = false;
+                                stopFetchBtn.innerHTML = '<i class="fas fa-stop-circle me-2"></i>Stop';
+                            }
+                        })
+                        .catch(() => {
+                            alert('Network error while stopping fetch.');
+                            stopFetchBtn.disabled = false;
+                            stopFetchBtn.innerHTML = '<i class="fas fa-stop-circle me-2"></i>Stop';
+                        });
+                });
             }
 
             // Render Radio Buttons
