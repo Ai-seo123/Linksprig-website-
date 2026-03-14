@@ -1,47 +1,181 @@
 {% extends "base.html" %}
 
-{% block title %}Register - LinkedIn Automation{% endblock %}
+{% block title %}Register - LinkSprig{% endblock %}
 
 {% block content %}
-<div class="container" style="max-width:520px; margin:auto;">
-  <div class="card mt-5 shadow">
-    <div class="card-header text-center" style="background: linear-gradient(90deg, #0a66c2 80%, #e6f0f9); color:#fff;">
-      <h3><i class="fas fa-user-plus me-2"></i>Join the LinkedIn Automation Dashboard</h3>
+<style>
+    .auth-container {
+        min-height: calc(100vh - 100px);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 2rem;
+        background: #f8fafc;
+    }
+
+    .auth-card {
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(15px);
+        -webkit-backdrop-filter: blur(15px);
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        border-radius: 24px;
+        padding: 3rem;
+        width: 100%;
+        max-width: 550px;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+    }
+
+    .auth-header {
+        text-align: center;
+        margin-bottom: 2.5rem;
+    }
+
+    .auth-logo {
+        height: 60px;
+        margin-bottom: 1.5rem;
+    }
+
+    .auth-title {
+        font-size: 1.875rem;
+        font-weight: 700;
+        color: #1e293b;
+        margin-bottom: 0.5rem;
+    }
+
+    .auth-subtitle {
+        color: #64748b;
+        font-size: 1rem;
+    }
+
+    .form-group {
+        margin-bottom: 1.5rem;
+    }
+
+    .form-label {
+        display: block;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: #475569;
+        margin-bottom: 0.5rem;
+    }
+
+    .form-control {
+        width: 100%;
+        padding: 0.75rem 1rem;
+        border: 1px solid #e2e8f0;
+        border-radius: 12px;
+        background: white;
+        transition: all 0.2s;
+        font-size: 1rem;
+    }
+
+    .form-control:focus {
+        outline: none;
+        border-color: #2563eb;
+        box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.1);
+    }
+
+    .btn-auth {
+        width: 100%;
+        padding: 0.875rem;
+        background: #2563eb;
+        color: white;
+        border: none;
+        border-radius: 30px;
+        font-size: 1.125rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: background 0.2s;
+        margin-top: 1rem;
+        box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+    }
+
+    .btn-auth:hover {
+        background: #1d4ed8;
+        transform: translateY(-1px);
+        box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+    }
+
+    .auth-footer {
+        text-align: center;
+        margin-top: 2rem;
+        color: #64748b;
+        font-size: 0.95rem;
+    }
+
+    .auth-link {
+        color: #2563eb;
+        font-weight: 600;
+        text-decoration: none;
+    }
+
+    .auth-link:hover {
+        text-decoration: underline;
+    }
+
+    .row-cols-2 {
+        display: flex;
+        gap: 1rem;
+    }
+
+    .row-cols-2 > div {
+        flex: 1;
+    }
+</style>
+
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <img src="{{ url_for('static', filename='images/linksprig-logo.png') }}" alt="LinkSprig" class="auth-logo">
+            <h1 class="auth-title">Join LinkSprig</h1>
+            <p class="auth-subtitle">Automate your outreach with AI</p>
+        </div>
+
+        <form action="" method="post" autocomplete="off">
+            <div class="row-cols-2">
+                <div class="form-group">
+                    <label for="first_name" class="form-label">First Name</label>
+                    <input type="text" id="first_name" name="first_name" class="form-control" placeholder="John" required>
+                </div>
+                <div class="form-group">
+                    <label for="last_name" class="form-label">Last Name</label>
+                    <input type="text" id="last_name" name="last_name" class="form-control" placeholder="Doe" required>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label for="email" class="form-label">Email Address</label>
+                <input type="email" id="email" name="email" class="form-control" placeholder="john@example.com" required>
+            </div>
+
+            <div class="form-group">
+                <label for="company_name" class="form-label">Company Name</label>
+                <input type="text" id="company_name" name="company_name" class="form-control" placeholder="Your Company Ltd.">
+            </div>
+
+            <div class="form-group">
+                <label for="company_website" class="form-label">Company Website</label>
+                <input type="url" id="company_website" name="company_website" class="form-control" placeholder="https://example.com">
+            </div>
+
+            <div class="form-group">
+                <label for="password" class="form-label">Password</label>
+                <input type="password" id="password" name="password" class="form-control" placeholder="Min. 6 characters" required>
+            </div>
+
+            <div class="form-group">
+                <label for="confirm_password" class="form-label">Confirm Password</label>
+                <input type="password" id="confirm_password" name="confirm_password" class="form-control" placeholder="Re-enter password" required>
+            </div>
+
+            <button type="submit" class="btn-auth">
+                Create Account
+            </button>
+        </form>
+
+        <div class="auth-footer">
+            Already have an account? <a href="{{ url_for('login') }}" class="auth-link">Log in</a>
+        </div>
     </div>
-    <div class="card-body pb-3">
-      {% if error %}
-        <div class="alert alert-danger">{{ error }}</div>
-      {% endif %}
-      <form action="" method="post" autocomplete="off">
-        <div class="form-group mb-3">
-          <label for="first_name" class="fw-bold">First Name</label>
-          <input class="form-control" type="text" id="first_name" name="first_name" placeholder="Your first name" required>
-        </div>
-        <div class="form-group mb-3">
-          <label for="last_name" class="fw-bold">Last Name</label>
-          <input class="form-control" type="text" id="last_name" name="last_name" placeholder="Your last name" required>
-        </div>
-        <div class="form-group mb-3">
-          <label for="email" class="fw-bold">Email address</label>
-          <input class="form-control" type="email" id="email" name="email" placeholder="you@email.com" required>
-        </div>
-        <div class="form-group mb-3">
-          <label for="password" class="fw-bold">Password</label>
-          <input class="form-control" type="password" id="password" name="password" placeholder="Create a password" required>
-        </div>
-        <div class="form-group mb-3">
-          <label for="confirm_password" class="fw-bold">Confirm Password</label>
-          <input class="form-control" type="password" id="confirm_password" name="confirm_password" placeholder="Confirm password" required>
-        </div>
-        <button type="submit" class="btn btn-primary btn-lg w-100">
-          <i class="fas fa-user-plus me-1"></i> Register
-        </button>
-      </form>
-      <div class="text-center text-muted mt-3" style="font-size:1.01em;">
-        <span>Already have an account?</span>
-        <a href="{{ url_for('login') }}" class="fw-bold" style="color:#0a66c2;">Login here</a>
-      </div>
-    </div>
-  </div>
 </div>
 {% endblock %}

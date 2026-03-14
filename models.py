@@ -11,6 +11,8 @@ class User(Document):
     password_hash = StringField(required=True, max_length=128)
     first_name = StringField(required=True, max_length=50)
     last_name = StringField(required=True, max_length=50)
+    company_name = StringField(max_length=100)
+    company_website = StringField(max_length=200)
     created_at = DateTimeField(default=datetime.utcnow)
     updated_at = DateTimeField(default=datetime.utcnow)
     total_connections = IntField(default=0)

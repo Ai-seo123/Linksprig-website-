@@ -334,6 +334,8 @@ def register():
             email = request.form.get('email', '').strip().lower()
             password = request.form.get('password', '').strip()
             confirm_password = request.form.get('confirm_password', '').strip()
+            company_name = request.form.get('company_name', '').strip()
+            company_website = request.form.get('company_website', '').strip()
             
             # Validation
             if not all([first_name, last_name, email, password, confirm_password]):
@@ -365,7 +367,9 @@ def register():
             user = User(
                 email=email,
                 first_name=first_name,
-                last_name=last_name
+                last_name=last_name,
+                company_name=company_name,
+                company_website=company_website
             )
             user.set_password(password)
             user.save()
@@ -2042,6 +2046,60 @@ def ai_inbox():
     return render_template('ai_inbox.html', user=user)
 inbox_preview_states = {}
 
+
+def normalize_inbox_preview(preview_data):
+    """Normalize inbox preview payloads into the shape expected by the UI."""
+    if not isinstance(preview_data, dict):
+        return {}
+
+    raw_contact = preview_data.get('contact')
+    if isinstance(raw_contact, dict):
+        contact = {
+            'name': raw_contact.get('name'),
+            'company': raw_contact.get('company'),
+            'title': raw_contact.get('title'),
+            'linkedin_url': raw_contact.get('linkedin_url'),
+        }
+    else:
+        contact = {
+            'name': preview_data.get('contact_name'),
+            'company': preview_data.get('contact_company'),
+            'title': preview_data.get('contact_title'),
+            'linkedin_url': preview_data.get('linkedin_url'),
+        }
+
+    history = []
+    for msg in preview_data.get('conversation_history') or []:
+        if not isinstance(msg, dict):
+            continue
+        history.append({
+            'sender': msg.get('sender', 'Unknown'),
+            'message': msg.get('message', msg.get('text', '')),
+            'timestamp': msg.get('timestamp', ''),
+        })
+
+    if not history and preview_data.get('their_message'):
+        history.append({
+            'sender': contact.get('name') or 'Them',
+            'message': preview_data.get('their_message', ''),
+            'timestamp': '',
+        })
+
+    return {
+        'session_id': preview_data.get('session_id'),
+        'process_id': preview_data.get('process_id'),
+        'contact': contact,
+        'conversation_history': history,
+        'generated_message': (
+            preview_data.get('generated_message')
+            or preview_data.get('suggested_reply')
+            or preview_data.get('message')
+            or ''
+        ),
+        'their_message': preview_data.get('their_message', ''),
+        'intent': preview_data.get('intent'),
+    }
+
 # In app.py - Replace the @app.route('/api/inbox_preview/<process_id>') GET endpoint
 @application.route('/api/inbox_preview/<session_id>', methods=['GET'])
 @login_required
@@ -2130,15 +2188,17 @@ def api_inbox_preview():
         if not session_id or not preview_data:
             return jsonify({'error': 'Missing session_id or preview data'}), 400
 
+        normalized_preview = normalize_inbox_preview(preview_data)
+
         # Store the state for the frontend to poll
         inbox_preview_states[session_id] = {
             'awaiting_confirmation': True,
-            'preview': preview_data,
+            'preview': normalized_preview,
             'user_id': str(user.id),
             'timestamp': datetime.now().isoformat()
         }
         
-        contact_name = preview_data.get('contact', {}).get('name', 'Unknown')
+        contact_name = normalized_preview.get('contact', {}).get('name', 'Unknown')
         logger.info(f"✅ Stored inbox preview for session {session_id} (Contact: {contact_name})")
         
         return jsonify({'success': True}), 200
@@ -2208,12 +2268,13 @@ def api_client_ping():
             session_id = session_data.get('session_id')
             conversation = session_data.get('conversation')
             if session_id and conversation:
-                process_id = conversation.get('process_id') or session_id
+                normalized_preview = normalize_inbox_preview(conversation)
+                process_id = normalized_preview.get('process_id') or session_id
                 inbox_preview_states[session_id] = {
                     'session_id': session_id,
                     'process_id': process_id,
                     'awaiting_confirmation': True,
-                    'preview': conversation,
+                    'preview': normalized_preview,
                     'timestamp': datetime.now().isoformat()
                 }
         
